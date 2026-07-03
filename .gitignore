@@ -1,0 +1,12 @@
+# Secrets (clé API)
+.env
+
+# Environnement virtuel Python
+venv/
+
+# Cache Python
+__pycache__/
+*.pyc
+
+# Fichiers système macOS
+.DS_Store
