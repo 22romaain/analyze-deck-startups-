@@ -43,3 +43,18 @@ class DeckAnalysis(BaseModel):
     ask: str = Field(
         description="La demande : montant levé, valorisation, use of funds, prochaines étapes"
     )
+
+
+# Labels lisibles pour l'interface — évite de coder en dur les noms dans Streamlit
+DIMENSION_LABELS: dict[str, str] = {
+    "equipe": "Équipe",
+    "probleme": "Problème",
+    "solution": "Solution",
+    "marche": "Marché",
+    "business_model": "Business Model",
+    "traction": "Traction",
+    "concurrence": "Concurrence",
+    "go_to_market": "Go-to-Market",
+    "financials": "Financials",
+    "ask": "Ask",
+}

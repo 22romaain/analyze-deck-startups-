@@ -1,24 +1,28 @@
-"""Module d'extraction : envoie les images de slides à Mistral vision et récupère l'analyse structurée."""
+"""Module d'extraction : envoie le deck à Mistral et récupère l'analyse structurée.
+
+Deux modes : texte (markdown via markitdown, économe en tokens) ou vision (images).
+Le mode texte est tenté en premier, fallback sur vision si le PDF est mal parsé.
+"""
 
 import base64
 import json
 import os
 
 from dotenv import load_dotenv
-from mistralai import Mistral
+from mistralai.client import Mistral
 
+from src.ingestion import convert_to_markdown, group_slides
 from src.models import DeckAnalysis
 
 # Charge les variables du fichier .env (notamment MISTRAL_API_KEY)
 load_dotenv()
 
 # Le prompt système définit le rôle et les instructions pour Mistral.
-# C'est ici que tu peux ajuster le comportement de l'analyse.
-SYSTEM_PROMPT = """Tu es un analyste VC senior. On te présente les slides d'un pitch deck de startup.
+SYSTEM_PROMPT = """Tu es un analyste VC senior. On te présente un pitch deck de startup.
 
 Analyse le deck selon ces 10 dimensions. Pour chaque dimension, sois factuel et précis :
-cite les chiffres et éléments visibles dans les slides. Si une information est absente
-du deck, dis-le explicitement.
+cite les chiffres et éléments présents dans le deck. Si une information est absente,
+dis-le explicitement.
 
 Dimensions à analyser :
 - equipe : fondateurs, parcours, complémentarité, founder-market fit
@@ -35,23 +39,18 @@ Dimensions à analyser :
 Réponds UNIQUEMENT avec un objet JSON valide contenant ces 10 clés, sans texte autour.
 Pas de markdown, pas de commentaires, juste le JSON."""
 
+# Modèles Mistral
+VISION_MODEL = "pixtral-large-latest"
+TEXT_MODEL = "mistral-large-latest"
+
 
 def _encode_image(image_bytes: bytes) -> str:
-    """Encode une image PNG en base64 pour l'API Mistral.
-
-    L'API attend les images sous forme de texte base64 dans le JSON,
-    pas des bytes bruts. C'est une conversion réversible, sans perte.
-    """
+    """Encode une image PNG en base64 pour l'API Mistral."""
     return base64.b64encode(image_bytes).decode("utf-8")
 
 
-def _build_messages(slides: list[bytes]) -> list[dict]:
-    """Construit la liste de messages pour l'API Mistral.
-
-    On envoie toutes les slides dans un seul message utilisateur
-    pour respecter le rate limit (2 req/min sur le tier gratuit).
-    """
-    # Chaque image devient un bloc "image_url" dans le contenu du message
+def _build_vision_messages(slides: list[bytes]) -> list[dict]:
+    """Construit les messages pour le mode vision (images)."""
     image_blocks = []
     for slide_bytes in slides:
         b64 = _encode_image(slide_bytes)
@@ -60,7 +59,6 @@ def _build_messages(slides: list[bytes]) -> list[dict]:
             "image_url": {"url": f"data:image/png;base64,{b64}"},
         })
 
-    # Le texte qui accompagne les images
     image_blocks.append({
         "type": "text",
         "text": "Voici les slides du pitch deck. Analyse-les selon les instructions.",
@@ -72,15 +70,40 @@ def _build_messages(slides: list[bytes]) -> list[dict]:
     ]
 
 
-# Nom du modèle vision Mistral — vérifié dans la doc Mistral (juillet 2025)
-MODEL_NAME = "pixtral-large-latest"
+def _build_text_messages(markdown: str) -> list[dict]:
+    """Construit les messages pour le mode texte (markdown)."""
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Voici le contenu du pitch deck :\n\n{markdown}"},
+    ]
 
 
-def analyze_deck(slides: list[bytes]) -> DeckAnalysis:
-    """Envoie les slides à Mistral vision et retourne l'analyse structurée.
+def _parse_response(raw_text: str) -> DeckAnalysis:
+    """Parse la réponse brute de Mistral en objet DeckAnalysis."""
+    raw_text = raw_text.strip()
+    if raw_text.startswith("```"):
+        lines = raw_text.split("\n")
+        raw_text = "\n".join(lines[1:-1]).strip()
 
-    C'est la fonction publique du module, la seule que main.py appellera.
-    Le flux : slides (bytes) -> messages formatés -> appel API -> JSON -> DeckAnalysis.
+    data = json.loads(raw_text)
+
+    # Filet de sécurité : sous-objets convertis en texte lisible
+    for key, value in data.items():
+        if isinstance(value, dict):
+            data[key] = "\n".join(f"{k}: {v}" for k, v in value.items())
+
+    return DeckAnalysis(**data)
+
+
+def analyze_deck(slides: list[bytes], pdf_path: str | None = None) -> tuple[DeckAnalysis, str]:
+    """Analyse un deck en essayant d'abord le mode texte, puis vision en fallback.
+
+    Args:
+        slides: images PNG des slides (pour le mode vision)
+        pdf_path: chemin du PDF (pour tenter markitdown)
+
+    Returns:
+        Tuple (analyse, mode) — mode est "texte" ou "vision" pour informer l'utilisateur.
     """
     api_key = os.getenv("MISTRAL_API_KEY")
     if not api_key:
@@ -89,20 +112,25 @@ def analyze_deck(slides: list[bytes]) -> DeckAnalysis:
         )
 
     client = Mistral(api_key=api_key)
-    messages = _build_messages(slides)
 
-    # Appel à l'API Mistral vision
-    response = client.chat.complete(
-        model=MODEL_NAME,
-        messages=messages,
-    )
+    # Tente le mode texte si le chemin du PDF est fourni
+    markdown = None
+    if pdf_path:
+        markdown = convert_to_markdown(pdf_path)
 
-    # Le contenu de la réponse est dans le premier choix
+    if markdown:
+        # Mode texte : économe en tokens
+        messages = _build_text_messages(markdown)
+        response = client.chat.complete(model=TEXT_MODEL, messages=messages)
+        mode = "texte"
+    else:
+        # Mode vision : fallback si markitdown échoue
+        slides = group_slides(slides)
+        messages = _build_vision_messages(slides)
+        response = client.chat.complete(model=VISION_MODEL, messages=messages)
+        mode = "vision"
+
     raw_text = response.choices[0].message.content
+    analysis = _parse_response(raw_text)
 
-    # Parse le JSON renvoyé par Mistral en objet DeckAnalysis
-    # Si le JSON est invalide ou incomplet, Pydantic lève une erreur claire
-    data = json.loads(raw_text)
-    analysis = DeckAnalysis(**data)
-
-    return analysis
+    return analysis, mode

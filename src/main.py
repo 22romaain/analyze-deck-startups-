@@ -23,12 +23,11 @@ def main() -> None:
     print(f"{len(slides)} slides détectées.")
 
     # Étape 2 : envoyer les slides à Mistral et récupérer l'analyse
-    print("Analyse en cours via Mistral vision...")
-    analysis = analyze_deck(slides)
+    print("Analyse en cours via Mistral...")
+    analysis, mode = analyze_deck(slides, pdf_path=pdf_path)
+    print(f"Mode utilisé : {mode}")
 
     # Étape 3 : afficher le résultat JSON formaté
-    # model_dump_json : méthode Pydantic qui sérialise l'objet en JSON propre
-    # indent=2 pour la lisibilité humaine
     print("\n--- Analyse du deck ---")
     print(analysis.model_dump_json(indent=2))
 
