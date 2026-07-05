@@ -24,7 +24,7 @@ def load_deck(pdf_path: str) -> list[bytes]:
     """
     path = Path(pdf_path)
 
-    # Vérification explicite : mieux vaut une erreur claire qu'un traceback cryptique
+    # Vérification explicite
     if not path.exists():
         raise FileNotFoundError(f"Fichier introuvable : {path}")
     if path.suffix.lower() != ".pdf":

@@ -108,23 +108,23 @@ def analyze_deck(slides: list[bytes], pdf_path: str | None = None) -> tuple[Deck
     api_key = os.getenv("MISTRAL_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "MISTRAL_API_KEY absente. Vérifie ton fichier .env à la racine du projet."
+            "MISTRAL_API_KEY absente. Vérifier le fichier .env à la racine du projet."
         )
 
     client = Mistral(api_key=api_key)
 
-    # Tente le mode texte si le chemin du PDF est fourni
+    #transforme le PDF en texte si le chemin est fourni
     markdown = None
     if pdf_path:
         markdown = convert_to_markdown(pdf_path)
 
     if markdown:
-        # Mode texte : économe en tokens
+        #economise les tokens
         messages = _build_text_messages(markdown)
         response = client.chat.complete(model=TEXT_MODEL, messages=messages)
         mode = "texte"
     else:
-        # Mode vision : fallback si markitdown échoue
+        #fallback si markitdown échoue
         slides = group_slides(slides)
         messages = _build_vision_messages(slides)
         response = client.chat.complete(model=VISION_MODEL, messages=messages)
