@@ -10,3 +10,6 @@ __pycache__/
 
 # Fichiers système macOS
 .DS_Store
+
+# Decks de test (PDF volumineux, données pas du code)
+decks/
