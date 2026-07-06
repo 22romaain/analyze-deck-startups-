@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from mistralai.client import Mistral
 
 from src.ingestion import convert_to_markdown, group_slides
-from src.models import DeckAnalysis
+from src.models import DeckAnalysis, DeckSignals
 
 # Charge les variables du fichier .env (notamment MISTRAL_API_KEY)
 load_dotenv()
@@ -36,8 +36,31 @@ Dimensions à analyser :
 - financials : projections, hypothèses clés, runway, chemin vers rentabilité
 - ask : montant recherché, valorisation, use of funds, prochaines étapes
 
-Réponds UNIQUEMENT avec un objet JSON valide contenant ces 10 clés, sans texte autour.
-Pas de markdown, pas de commentaires, juste le JSON."""
+En plus des 10 dimensions, ajoute ces 2 champs :
+- detected_round : le round de financement que ce deck cible, parmi : pre-seed, seed, serie-a, serie-b, serie-c, growth. Déduis-le du montant demandé, du stade de maturité et du vocabulaire utilisé.
+- ask_amount : le montant recherché extrait du deck, en chiffres avec devise (ex: "2M EUR", "500k USD"). Si absent, écris "non mentionné".
+
+Ajoute enfin un objet "signals" avec des faits chiffrés/booléens, pour un scoring automatique.
+RÈGLE ABSOLUE : n'invente jamais. Si une donnée n'est PAS dans le deck, mets null.
+Un null est une information (donnée absente), pas un défaut à combler.
+Clés de "signals" :
+- has_technical_founder : true/false/null. Au moins un fondateur au profil technique.
+- product_is_tech : true/false/null. Le coeur du produit est technique.
+- founder_ownership_pct : nombre ou null. % du capital détenu par les fondateurs.
+- tam_methodology : "top-down" | "bottom-up" | "both" | null. Méthode de calcul du TAM.
+- has_why_now : true/false/null. Le deck justifie explicitement le 'why now'.
+- revenue_eur : nombre ou null. Revenu ou ARR annuel en euros.
+- growth_rate_pct : nombre ou null. Taux de croissance en %.
+- growth_period : "MoM" | "YoY" | null. Période de la croissance.
+- churn_rate_pct : nombre ou null. Taux de churn en %.
+- churn_period : "monthly" | "annual" | null. Période du churn.
+- nrr_pct : nombre ou null. Net Revenue Retention en %.
+- burn_multiple : nombre ou null. Burn multiple.
+- runway_months : nombre ou null. Runway restant en mois.
+- customer_concentration_top1_pct : nombre ou null. % du revenu venant du plus gros client.
+
+Réponds UNIQUEMENT avec un objet JSON valide : les 12 clés de dimensions/round au
+premier niveau, plus la clé "signals". Pas de markdown, pas de commentaires, juste le JSON."""
 
 # Modèles Mistral
 VISION_MODEL = "pixtral-large-latest"
@@ -78,8 +101,12 @@ def _build_text_messages(markdown: str) -> list[dict]:
     ]
 
 
-def _parse_response(raw_text: str) -> DeckAnalysis:
-    """Parse la réponse brute de Mistral en objet DeckAnalysis."""
+def _parse_response(raw_text: str) -> tuple[DeckAnalysis, DeckSignals]:
+    """Parse la réponse brute de Mistral en (DeckAnalysis, DeckSignals).
+
+    On sort d'abord le sous-objet 'signals' pour qu'il ne soit pas aplati en
+    texte par le filet de sécurité (qui n'est là que pour les dimensions).
+    """
     raw_text = raw_text.strip()
     if raw_text.startswith("```"):
         lines = raw_text.split("\n")
@@ -87,15 +114,18 @@ def _parse_response(raw_text: str) -> DeckAnalysis:
 
     data = json.loads(raw_text)
 
-    # Filet de sécurité : sous-objets convertis en texte lisible
+    # Extraction des signaux (sous-objet). Absent -> DeckSignals vide (tout None).
+    signals_data = data.pop("signals", {}) or {}
+
+    # Filet de sécurité : sous-objets restants convertis en texte lisible
     for key, value in data.items():
         if isinstance(value, dict):
             data[key] = "\n".join(f"{k}: {v}" for k, v in value.items())
 
-    return DeckAnalysis(**data)
+    return DeckAnalysis(**data), DeckSignals(**signals_data)
 
 
-def analyze_deck(slides: list[bytes], pdf_path: str | None = None) -> tuple[DeckAnalysis, str]:
+def analyze_deck(slides: list[bytes], pdf_path: str | None = None) -> tuple[DeckAnalysis, DeckSignals, str]:
     """Analyse un deck en essayant d'abord le mode texte, puis vision en fallback.
 
     Args:
@@ -103,7 +133,7 @@ def analyze_deck(slides: list[bytes], pdf_path: str | None = None) -> tuple[Deck
         pdf_path: chemin du PDF (pour tenter markitdown)
 
     Returns:
-        Tuple (analyse, mode) — mode est "texte" ou "vision" pour informer l'utilisateur.
+        Tuple (analyse, signals, mode) — mode est "texte" ou "vision" pour informer l'utilisateur.
     """
     api_key = os.getenv("MISTRAL_API_KEY")
     if not api_key:
@@ -131,6 +161,6 @@ def analyze_deck(slides: list[bytes], pdf_path: str | None = None) -> tuple[Deck
         mode = "vision"
 
     raw_text = response.choices[0].message.content
-    analysis = _parse_response(raw_text)
+    analysis, signals = _parse_response(raw_text)
 
-    return analysis, mode
+    return analysis, signals, mode
