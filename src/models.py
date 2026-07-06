@@ -7,6 +7,8 @@ Analogie : c'est la checklist due diligence — on définit ce qu'on veut
 avant d'ouvrir la data room.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -43,6 +45,173 @@ class DeckAnalysis(BaseModel):
     ask: str = Field(
         description="La demande : montant levé, valorisation, use of funds, prochaines étapes"
     )
+    detected_round: str = Field(
+        description="Round de financement détecté : pre-seed, seed, serie-a, serie-b, serie-c ou growth"
+    )
+    ask_amount: str = Field(
+        description="Montant recherché extrait du deck, en chiffres avec devise (ex: '2M EUR', '500k USD'). 'non mentionné' si absent."
+    )
+
+
+class DeckSignals(BaseModel):
+    """Signaux factuels typés extraits du deck : la matière du scoring déterministe.
+
+    Tous les champs sont optionnels. None signifie 'absent du deck', ce qui est
+    un signal en soi (principe 1.1 du référentiel), jamais une valeur neutre.
+    Le LLM ne remplit que ce qu'il trouve, il n'invente pas.
+    """
+
+    # Équipe
+    has_technical_founder: bool | None = Field(
+        default=None, description="Au moins un fondateur a un profil technique (ingénieur, dev, PhD tech). None si indéterminable."
+    )
+    product_is_tech: bool | None = Field(
+        default=None, description="Le coeur du produit est technique (le différenciant repose sur de la tech). None si indéterminable."
+    )
+    founder_ownership_pct: float | None = Field(
+        default=None, description="Part du capital détenue par les fondateurs, en pourcentage (ex: 55.0). None si absent."
+    )
+
+    # Marché
+    tam_methodology: Literal["top-down", "bottom-up", "both"] | None = Field(
+        default=None, description="Méthode de calcul du TAM : top-down (part d'un grand marché), bottom-up (clients x prix), both, ou None si absent."
+    )
+    has_why_now: bool | None = Field(
+        default=None, description="Le deck justifie explicitement le 'why now' (pourquoi ce marché maintenant). None si indéterminable."
+    )
+
+    # Traction et unit economics
+    revenue_eur: float | None = Field(
+        default=None, description="Revenu ou ARR annuel en euros (ex: 1200000.0). None si absent."
+    )
+    growth_rate_pct: float | None = Field(
+        default=None, description="Taux de croissance en pourcentage (ex: 15.0). None si absent."
+    )
+    growth_period: Literal["MoM", "YoY"] | None = Field(
+        default=None, description="Période du taux de croissance : MoM (mensuel) ou YoY (annuel). None si absent."
+    )
+    churn_rate_pct: float | None = Field(
+        default=None, description="Taux de churn en pourcentage (ex: 5.0). None si absent."
+    )
+    churn_period: Literal["monthly", "annual"] | None = Field(
+        default=None, description="Période du churn : monthly ou annual. None si absent."
+    )
+    nrr_pct: float | None = Field(
+        default=None, description="Net Revenue Retention en pourcentage (ex: 110.0). None si absent."
+    )
+    burn_multiple: float | None = Field(
+        default=None, description="Burn multiple (cash brûlé / net new ARR, ex: 1.5). None si absent."
+    )
+    runway_months: float | None = Field(
+        default=None, description="Runway restant en mois (ex: 12.0). None si absent."
+    )
+    customer_concentration_top1_pct: float | None = Field(
+        default=None, description="Part du revenu venant du plus gros client, en pourcentage (ex: 30.0). None si absent."
+    )
+
+
+# Fourchettes de tickets par round (en EUR) — tirées du référentiel critères
+ROUND_TICKET_RANGES: dict[str, tuple[float, float]] = {
+    "pre-seed": (100_000, 750_000),
+    "seed": (500_000, 3_000_000),
+    "serie-a": (5_000_000, 15_000_000),
+    "serie-b": (15_000_000, 50_000_000),
+    "serie-c": (30_000_000, 100_000_000),
+    "growth": (50_000_000, 200_000_000),
+}
+
+ROUND_OPTIONS: list[str] = ["pre-seed", "seed", "serie-a", "serie-b", "serie-c", "growth"]
+
+
+# --- Résultats du scoring déterministe (étape 2) ---
+
+# Niveaux de sévérité tels qu'ils apparaissent dans le référentiel critères.
+Severity = Literal["CRITIQUE", "MAJEUR", "MINEUR"]
+
+
+class RedFlag(BaseModel):
+    """Un signal d'alerte détecté par du code, pas par le LLM.
+
+    dimension : la clé de dimension concernée (ex: 'equipe').
+    severity : CRITIQUE, MAJEUR ou MINEUR.
+    message : explication lisible, auditable (on sait pourquoi il s'est déclenché).
+    """
+
+    dimension: str
+    severity: Severity
+    message: str
+
+
+class DimensionScore(BaseModel):
+    """Score d'une dimension sur 100, avec la trace de son calcul.
+
+    rationale : la liste des ajustements appliqués (bonus, pénalités). C'est ce
+    qui rend le score auditable : on peut relire pourquoi il vaut ce qu'il vaut.
+    """
+
+    dimension: str
+    label: str
+    score: float
+    weight: float  # poids de la dimension dans le round (0 si non pondérée)
+    rationale: list[str]
+
+
+class AnalysisResult(BaseModel):
+    """Résultat complet du jugement déterministe sur un deck, pour un round donné."""
+
+    round: str
+    global_score: float  # score global pondéré, sur 100
+    dimension_scores: list[DimensionScore]
+    red_flags: list[RedFlag]
+
+
+def parse_amount(amount_str: str) -> float | None:
+    """Convertit un montant texte ('2M EUR', '500k USD') en nombre.
+
+    Retourne None si le montant n'est pas parsable.
+    """
+    if not amount_str or "non mentionné" in amount_str.lower():
+        return None
+
+    import re
+    # Cherche un nombre suivi optionnellement de k/M/B
+    match = re.search(r"([\d.,]+)\s*(k|m|b|M|K|B)?", amount_str, re.IGNORECASE)
+    if not match:
+        return None
+
+    number = float(match.group(1).replace(",", "."))
+    multiplier = match.group(2)
+    if multiplier:
+        multiplier = multiplier.upper()
+        if multiplier == "K":
+            number *= 1_000
+        elif multiplier == "M":
+            number *= 1_000_000
+        elif multiplier == "B":
+            number *= 1_000_000_000
+
+    return number
+
+
+def check_round_coherence(detected_round: str, ask_amount: str) -> str | None:
+    """Vérifie la cohérence entre le round détecté et le montant demandé.
+
+    Retourne un message d'alerte si incohérent, None si OK.
+    """
+    amount = parse_amount(ask_amount)
+    if amount is None:
+        return None  # Pas de montant, pas de vérification possible
+
+    if detected_round not in ROUND_TICKET_RANGES:
+        return None
+
+    min_ticket, max_ticket = ROUND_TICKET_RANGES[detected_round]
+    if amount < min_ticket:
+        return f"Le montant ({ask_amount}) est inférieur à la fourchette habituelle pour un {detected_round} ({min_ticket/1e6:.1f}M - {max_ticket/1e6:.1f}M EUR)."
+    if amount > max_ticket:
+        return f"Le montant ({ask_amount}) est supérieur à la fourchette habituelle pour un {detected_round} ({min_ticket/1e6:.1f}M - {max_ticket/1e6:.1f}M EUR)."
+
+    return None
 
 
 # Labels lisibles pour l'interface — évite de coder en dur les noms dans Streamlit
