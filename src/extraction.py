@@ -60,6 +60,16 @@ Clés de "signals" :
 - runway_months : nombre ou null. Runway restant en mois.
 - customer_concentration_top1_pct : nombre ou null. % du revenu venant du plus gros client.
 
+RÈGLE DE COUPLAGE (impérative). Un taux sans sa période, ou un montant sans sa devise,
+est inutilisable. Ces champs vont par paires indissociables :
+- churn_rate_pct <-> churn_period
+- growth_rate_pct <-> growth_period
+- revenue_amount <-> revenue_currency
+Pour chaque paire : soit tu renseignes LES DEUX, soit tu mets LES DEUX à null. Ne donne
+jamais le taux/montant seul. Si la période ou la devise n'est pas écrite noir sur blanc,
+déduis-la du contexte du deck (unité, formulation). Si c'est vraiment indéterminable,
+mets les deux à null.
+
 Réponds UNIQUEMENT avec un objet JSON valide : les 12 clés de dimensions/round au
 premier niveau, plus la clé "signals". Pas de markdown, pas de commentaires, juste le JSON."""
 
