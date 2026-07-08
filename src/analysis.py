@@ -13,6 +13,7 @@ from src.models import (
     DeckSignals,
     DimensionScore,
     RedFlag,
+    revenue_in_eur,
 )
 
 # Poids de chaque dimension selon le round, tirés du référentiel (Partie 2).
@@ -160,6 +161,82 @@ def detect_red_flags(signals: DeckSignals, round_name: str) -> list[RedFlag]:
     return flags
 
 
+# Plafonds de revenu au-delà desquels un revenu devient suspect pour le round.
+# On lève rarement un pre-seed/seed avec déjà beaucoup de revenu : ça interroge.
+# Rien pour les rounds tardifs (un revenu élevé y est normal).
+REVENUE_CEILING_BY_ROUND_EUR: dict[str, float] = {
+    "pre-seed": 2_000_000,
+    "seed": 10_000_000,
+}
+
+
+def _to_monthly_pct(rate_pct: float, period: str, kind: str) -> float:
+    """Ramène un taux (churn ou croissance) à sa version mensuelle, en composé.
+
+    kind='churn' : un churn annuel c se traduit par un churn mensuel équivalent
+    tel que (1 - m)^12 = (1 - c). kind='growth' : (1 + m)^12 = (1 + a).
+    Le composé, pas la division par 12 : 5% par mois ne fait pas 60% par an.
+    """
+    r = rate_pct / 100
+    if period in ("annual", "YoY"):
+        if kind == "churn":
+            r = 1 - (1 - r) ** (1 / 12)
+        else:  # growth
+            r = (1 + r) ** (1 / 12) - 1
+    return r * 100
+
+
+def _annualize_churn_pct(churn_pct: float, period: str) -> float:
+    """Churn annualisé en composé : 5% mensuel -> ~46% annuel, pas 60%."""
+    if period == "annual":
+        return churn_pct
+    m = churn_pct / 100
+    return (1 - (1 - m) ** 12) * 100
+
+
+def detect_incoherences(signals: DeckSignals, round_name: str) -> list[RedFlag]:
+    """Croise les chiffres entre eux pour repérer les contradictions internes.
+
+    Différent des red flags classiques : ici un chiffre n'est pas jugé face à un
+    seuil, mais face à un AUTRE chiffre du deck. C'est ce qui attrape le chiffre
+    inventé mais crédible pris isolément. Message préfixé 'Incohérence interne'.
+    """
+    flags: list[RedFlag] = []
+
+    # 1. churn ↔ NRR : perdre beaucoup au churn tout en gardant un NRR >= 100%
+    #    suppose une expansion massive qui devrait être démontrée.
+    if signals.churn_rate_pct is not None and signals.churn_period is not None and signals.nrr_pct is not None:
+        annual_churn = _annualize_churn_pct(signals.churn_rate_pct, signals.churn_period)
+        if annual_churn > 15 and signals.nrr_pct >= 100:
+            flags.append(RedFlag(
+                dimension="business_model", severity="MAJEUR",
+                message=f"Incohérence interne : churn annualisé ~{annual_churn:.0f}% mais NRR de {signals.nrr_pct:.0f}%. Retenir >100% du revenu en perdant autant au churn suppose une expansion non démontrée.",
+            ))
+
+    # 2. churn ↔ croissance : ramenés au mois, si le churn dépasse la croissance,
+    #    la base se contracte malgré la croissance affichée.
+    if (signals.churn_rate_pct is not None and signals.churn_period is not None
+            and signals.growth_rate_pct is not None and signals.growth_period is not None):
+        monthly_churn = _to_monthly_pct(signals.churn_rate_pct, signals.churn_period, "churn")
+        monthly_growth = _to_monthly_pct(signals.growth_rate_pct, signals.growth_period, "growth")
+        if monthly_churn > monthly_growth:
+            flags.append(RedFlag(
+                dimension="traction", severity="MAJEUR",
+                message=f"Incohérence interne : churn (~{monthly_churn:.1f}%/mois) supérieur à la croissance (~{monthly_growth:.1f}%/mois). La base se contracte malgré une croissance affichée.",
+            ))
+
+    # 3. revenu ↔ round : un revenu très élevé sur un round précoce interroge.
+    rev_eur = revenue_in_eur(signals.revenue_amount, signals.revenue_currency)
+    ceiling = REVENUE_CEILING_BY_ROUND_EUR.get(round_name)
+    if rev_eur is not None and ceiling is not None and rev_eur > ceiling:
+        flags.append(RedFlag(
+            dimension="traction", severity="MINEUR",
+            message=f"Incohérence interne : revenu de ~{rev_eur/1e6:.1f}M EUR anormalement élevé pour un {round_name} (plafond attendu ~{ceiling/1e6:.0f}M).",
+        ))
+
+    return flags
+
+
 def _positive_bonuses(signals: DeckSignals) -> dict[str, list[tuple[float, str]]]:
     """Bonus par dimension quand un signal positif est présent.
 
@@ -186,8 +263,9 @@ def _positive_bonuses(signals: DeckSignals) -> dict[str, list[tuple[float, str]]
         or (signals.churn_period == "annual" and signals.churn_rate_pct < 10)
     ):
         add("business_model", 10, f"Churn maîtrisé ({signals.churn_rate_pct:.1f}%).")
-    if signals.revenue_eur is not None and signals.revenue_eur > 0:
-        add("traction", 10, f"Revenu établi ({signals.revenue_eur:,.0f} EUR).")
+    if signals.revenue_amount is not None and signals.revenue_amount > 0:
+        currency = signals.revenue_currency or ""
+        add("traction", 10, f"Revenu établi ({signals.revenue_amount:,.0f} {currency}).".strip())
     if signals.customer_concentration_top1_pct is not None and signals.customer_concentration_top1_pct <= 15:
         add("traction", 5, "Base clients diversifiée.")
     if signals.runway_months is not None and signals.runway_months >= 18:
@@ -234,7 +312,9 @@ def run_analysis(signals: DeckSignals, round_name: str) -> AnalysisResult:
 
     C'est la seule fonction que l'interface a besoin d'appeler.
     """
+    # Red flags classiques (chiffre vs seuil) + incohérences internes (chiffre vs chiffre).
     red_flags = detect_red_flags(signals, round_name)
+    red_flags += detect_incoherences(signals, round_name)
     dimension_scores = score_dimensions(signals, red_flags, round_name)
 
     # Score global = moyenne pondérée des dimensions par les poids du round.
