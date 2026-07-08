@@ -9,7 +9,7 @@ avant d'ouvrir la data room.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class DeckAnalysis(BaseModel):
@@ -111,6 +111,28 @@ class DeckSignals(BaseModel):
     customer_concentration_top1_pct: float | None = Field(
         default=None, description="Part du revenu venant du plus gros client, en pourcentage (ex: 30.0). None si absent."
     )
+
+    @model_validator(mode="after")
+    def _enforce_couples(self) -> "DeckSignals":
+        """Garantit qu'un taux/montant ne survit jamais sans son unité.
+
+        Un churn sans période, une croissance sans période, un revenu sans devise
+        sont inexploitables et souvent le signe d'un chiffre inventé. Si une seule
+        moitié d'une paire est présente, on remet LES DEUX à None. On jette la donnée
+        incomplète plutôt que de deviner l'unité (deviner fausserait le jugement).
+        """
+        couples = [
+            ("churn_rate_pct", "churn_period"),
+            ("growth_rate_pct", "growth_period"),
+            ("revenue_amount", "revenue_currency"),
+        ]
+        for value_field, unit_field in couples:
+            has_value = getattr(self, value_field) is not None
+            has_unit = getattr(self, unit_field) is not None
+            if has_value != has_unit:  # exactement une des deux moitiés
+                setattr(self, value_field, None)
+                setattr(self, unit_field, None)
+        return self
 
 
 # Fourchettes de tickets par round (en EUR) — tirées du référentiel critères
