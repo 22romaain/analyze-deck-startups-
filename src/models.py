@@ -81,8 +81,11 @@ class DeckSignals(BaseModel):
     )
 
     # Traction et unit economics
-    revenue_eur: float | None = Field(
-        default=None, description="Revenu ou ARR annuel en euros (ex: 1200000.0). None si absent."
+    revenue_amount: float | None = Field(
+        default=None, description="Revenu ou ARR annuel, montant brut tel qu'écrit dans le deck (ex: 150000.0). None si absent."
+    )
+    revenue_currency: Literal["EUR", "USD", "GBP"] | None = Field(
+        default=None, description="Devise du revenu : EUR, USD ou GBP. None si absent ou autre devise."
     )
     growth_rate_pct: float | None = Field(
         default=None, description="Taux de croissance en pourcentage (ex: 15.0). None si absent."
@@ -121,6 +124,27 @@ ROUND_TICKET_RANGES: dict[str, tuple[float, float]] = {
 }
 
 ROUND_OPTIONS: list[str] = ["pre-seed", "seed", "serie-a", "serie-b", "serie-c", "growth"]
+
+
+# Taux de change approximatifs vers l'euro. Volontairement fixes et lisibles :
+# ils servent à comparer des ordres de grandeur entre eux (revenu vs fourchette de
+# round), pas à faire de la compta. Un appel externe au taux réel serait plus juste
+# mais introduirait une dépendance réseau pour un gain négligeable ici.
+FX_TO_EUR: dict[str, float] = {"EUR": 1.0, "USD": 0.92, "GBP": 1.17}
+
+
+def revenue_in_eur(amount: float | None, currency: str | None) -> float | None:
+    """Convertit un revenu (montant + devise) en euros pour permettre les comparaisons.
+
+    Retourne None si le montant est absent ou la devise inconnue : on ne compare
+    que ce qu'on peut convertir de façon fiable.
+    """
+    if amount is None or currency is None:
+        return None
+    rate = FX_TO_EUR.get(currency)
+    if rate is None:
+        return None
+    return amount * rate
 
 
 # --- Résultats du scoring déterministe (étape 2) ---
