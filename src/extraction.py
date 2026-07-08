@@ -49,7 +49,8 @@ Clés de "signals" :
 - founder_ownership_pct : nombre ou null. % du capital détenu par les fondateurs.
 - tam_methodology : "top-down" | "bottom-up" | "both" | null. Méthode de calcul du TAM.
 - has_why_now : true/false/null. Le deck justifie explicitement le 'why now'.
-- revenue_eur : nombre ou null. Revenu ou ARR annuel en euros.
+- revenue_amount : nombre ou null. Revenu ou ARR annuel, montant brut tel qu'écrit (ne convertis pas).
+- revenue_currency : "EUR" | "USD" | "GBP" | null. Devise du revenu ci-dessus.
 - growth_rate_pct : nombre ou null. Taux de croissance en %.
 - growth_period : "MoM" | "YoY" | null. Période de la croissance.
 - churn_rate_pct : nombre ou null. Taux de churn en %.
@@ -63,7 +64,9 @@ Réponds UNIQUEMENT avec un objet JSON valide : les 12 clés de dimensions/round
 premier niveau, plus la clé "signals". Pas de markdown, pas de commentaires, juste le JSON."""
 
 # Modèles Mistral
-VISION_MODEL = "pixtral-large-latest"
+# Pixtral a été retiré du catalogue Mistral : la vision est désormais intégrée
+# aux modèles généralistes. On prend medium (vision OK, plus économe que large).
+VISION_MODEL = "mistral-medium-latest"
 TEXT_MODEL = "mistral-large-latest"
 
 
