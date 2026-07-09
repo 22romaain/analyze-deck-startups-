@@ -1,0 +1,16 @@
+{
+  "verdict": {
+    "seuil_bas": 40,
+    "seuil_haut": 65,
+    "majeurs_pour_approfondir": 2
+  },
+  "grades": [
+    {"min": 80, "grade": "A"},
+    {"min": 65, "grade": "B"},
+    {"min": 50, "grade": "C"},
+    {"min": 40, "grade": "D"},
+    {"min": 0, "grade": "E"}
+  ],
+  "societe_fallback": "Société",
+  "version_referentiel": "criteres_analyse_vc.md @ 2026-07"
+}
