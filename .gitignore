@@ -13,3 +13,10 @@ __pycache__/
 
 # Decks de test (PDF volumineux, données pas du code)
 decks/
+
+# Mémos générés (sortie de l'outil, pas du code)
+# Ancré à la racine (/) pour ne pas ignorer le package source src/output/.
+/output/
+
+# Cache pytest
+.pytest_cache/
