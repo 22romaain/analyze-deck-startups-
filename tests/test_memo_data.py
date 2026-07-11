@@ -70,11 +70,21 @@ def _ecris_config(tmp_path, data) -> "Path":
     return p
 
 
+# Champs requis ajoutés en tranche 2 : présents ici pour que l'erreur testée
+# porte bien sur les seuils/grades, pas sur un champ manquant.
+_BASE_EXTRA = {
+    "societe_fallback": "X",
+    "attendus_par_round": {},
+    "questions_referentiel": {},
+    "version_referentiel": "v",
+}
+
+
 def test_config_seuils_incoherents_leve_valueerror(tmp_path):
     data = {
         "verdict": {"seuil_bas": 70, "seuil_haut": 65, "majeurs_pour_approfondir": 2},
         "grades": [{"min": 0, "grade": "E"}],
-        "societe_fallback": "X", "version_referentiel": "v",
+        **_BASE_EXTRA,
     }
     with pytest.raises(ValueError):
         load_memo_config(_ecris_config(tmp_path, data))
@@ -84,7 +94,7 @@ def test_config_grades_non_decroissants_leve_valueerror(tmp_path):
     data = {
         "verdict": {"seuil_bas": 40, "seuil_haut": 65, "majeurs_pour_approfondir": 2},
         "grades": [{"min": 50, "grade": "C"}, {"min": 80, "grade": "A"}, {"min": 0, "grade": "E"}],
-        "societe_fallback": "X", "version_referentiel": "v",
+        **_BASE_EXTRA,
     }
     with pytest.raises(ValueError):
         load_memo_config(_ecris_config(tmp_path, data))

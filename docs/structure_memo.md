@@ -296,3 +296,9 @@ elle n'apparaît pas. **L'extraction ne capture pas encore la slide.** Donc :
 3. `DevilsAdvocateReview` (appel Mistral texte) à construire pour la section 6.
 4. Benchmarks du référentiel non structurés : dashboard partiel (`NON_EVALUABLE`).
 5. Nom de société non extrait proprement (fallback config).
+6. `questions_referentiel` (config) : le texte des questions est copié du référentiel
+   mais `bonne_reponse`/`mauvaise_reponse` sont vides, à rédiger par un expert VC.
+   Le code ne les génère jamais. `attendus_par_round` ne couvre que les signaux
+   **typés** de `DeckSignals` ; les attendus narratifs (§5.4 : équipe détaillée,
+   problème, use of funds) ne sont pas traçables tant que l'extraction ne les
+   structure pas.

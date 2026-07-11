@@ -12,5 +12,52 @@
     {"min": 0, "grade": "E"}
   ],
   "societe_fallback": "Société",
+  "attendus_par_round": {
+    "pre-seed": [
+      {"signal": "has_why_now", "label": "Why now (pourquoi maintenant)", "criticite": "MAJEUR"}
+    ],
+    "seed": [
+      {"signal": "has_why_now", "label": "Why now (pourquoi maintenant)", "criticite": "MAJEUR"},
+      {"signal": "revenue_amount", "label": "Premiers revenus / preuves d'usage", "criticite": "MAJEUR"},
+      {"signal": "founder_ownership_pct", "label": "Cap table (part fondateurs)", "criticite": "MINEUR"}
+    ],
+    "serie-a": [
+      {"signal": "revenue_amount", "label": "ARR", "criticite": "MAJEUR"},
+      {"signal": "growth_rate_pct", "label": "Croissance", "criticite": "MAJEUR"},
+      {"signal": "churn_rate_pct", "label": "Churn ou rétention", "criticite": "MAJEUR"},
+      {"signal": "runway_months", "label": "Burn et runway", "criticite": "MAJEUR"},
+      {"signal": "founder_ownership_pct", "label": "Cap table (part fondateurs)", "criticite": "MINEUR"}
+    ],
+    "serie-b": [
+      {"signal": "nrr_pct", "label": "NRR", "criticite": "MAJEUR"},
+      {"signal": "burn_multiple", "label": "Burn multiple", "criticite": "MAJEUR"},
+      {"signal": "churn_rate_pct", "label": "Churn ou rétention", "criticite": "MAJEUR"}
+    ],
+    "serie-c": [
+      {"signal": "burn_multiple", "label": "Burn multiple", "criticite": "MINEUR"}
+    ],
+    "growth": [
+      {"signal": "runway_months", "label": "Runway", "criticite": "MINEUR"}
+    ]
+  },
+  "questions_referentiel": {
+    "pre-seed": {
+      "equipe": {"question": "Pourquoi CETTE équipe sur CE problème ? Qu'ont-ils vu que les autres n'ont pas vu ?", "bonne_reponse": "", "mauvaise_reponse": ""},
+      "probleme": {"question": "Le problème est-il un painkiller ou un vitamin ?", "bonne_reponse": "", "mauvaise_reponse": ""},
+      "marche": {"question": "Si tout se passe bien, à quoi ressemble cette boite dans 10 ans ? La réponse justifie-t-elle un retour VC (100x possible) ?", "bonne_reponse": "", "mauvaise_reponse": ""},
+      "ask": {"question": "Qui a déjà dit non et pourquoi ?", "bonne_reponse": "", "mauvaise_reponse": ""}
+    },
+    "seed": {
+      "traction": {"question": "Les utilisateurs reviennent-ils ? À quelle fréquence ? Le montrent-ils (cohortes) ou l'affirment-ils ?", "bonne_reponse": "", "mauvaise_reponse": ""},
+      "business_model": {"question": "Le pricing a-t-il été confronté à de vrais clients ?", "bonne_reponse": "", "mauvaise_reponse": ""},
+      "equipe": {"question": "Que s'est-il passé depuis le pre-seed ? La vitesse d'apprentissage est la vraie métrique du seed.", "bonne_reponse": "", "mauvaise_reponse": ""}
+    },
+    "serie-a": {
+      "traction": {"question": "Le moteur de croissance est-il identifié et répétable, ou la traction est-elle un agrégat de coups uniques ?", "bonne_reponse": "", "mauvaise_reponse": ""},
+      "business_model": {"question": "Le burn multiple : combien coûte 1 EUR d'ARR net nouveau ?", "bonne_reponse": "", "mauvaise_reponse": ""},
+      "equipe": {"question": "Quel pourcentage les fondateurs détiennent-ils post-money ? (cible : > 50% après la série A)", "bonne_reponse": "", "mauvaise_reponse": ""},
+      "ask": {"question": "Qui sont les comparables récents et à quelles conditions ont-ils levé ? Ce deal est-il dans la distribution ou en dehors ?", "bonne_reponse": "", "mauvaise_reponse": ""}
+    }
+  },
   "version_referentiel": "criteres_analyse_vc.md @ 2026-07"
 }
