@@ -569,6 +569,74 @@ def build_missing_data(
     return missing
 
 
+# --- Contre-analyse (section 6) et questions fondateurs (section 7) ---
+
+# Bandeaux fixes : le mode dégradé et le mode disponible portent un message exact.
+REVIEW_BANDEAU_INDISPONIBLE = "Contre-analyse indisponible (erreur API)."
+REVIEW_BANDEAU_DISPONIBLE = "Critique générée par LLM. Non intégrée au score. Non reproductible."
+
+
+def build_review_block(review_content: str | None = None) -> ReviewBlock:
+    """Section 6 : contre-analyse. None -> encart dégradé, le mémo se génère quand même.
+
+    Tant que la brique DevilsAdvocateReview n'existe pas, review_content reste None.
+    Le jour où elle produit un texte, on le passe ici et le bandeau bascule.
+    """
+    if review_content is None:
+        return ReviewBlock(disponible=False, bandeau=REVIEW_BANDEAU_INDISPONIBLE, contenu=None)
+    return ReviewBlock(disponible=True, bandeau=REVIEW_BANDEAU_DISPONIBLE, contenu=review_content)
+
+
+def build_founder_questions(
+    analysis: AnalysisResult, signals: DeckSignals, config: MemoConfig, limit: int = 5
+) -> list[KeyQuestion]:
+    """Top `limit` questions à poser : red flags d'abord, puis données manquantes,
+    puis questions d'analyste du round. Déduplication par texte de question."""
+    round_name = analysis.round
+    questions_cfg = config.questions_referentiel.get(round_name, {})
+    result: list[KeyQuestion] = []
+    seen: set[str] = set()
+
+    def add(kq: KeyQuestion) -> None:
+        if kq.question not in seen:
+            seen.add(kq.question)
+            result.append(kq)
+
+    # 1. Questions liées aux red flags (sévérité décroissante, puis poids décroissant).
+    ranked = sorted(
+        analysis.red_flags,
+        key=lambda f: (_SEVERITY_ORDER[f.severity], -_round_weight(round_name, f.dimension), f.dimension),
+    )
+    for f in ranked:
+        q = questions_cfg.get(f.dimension)
+        if q is not None:
+            add(KeyQuestion(question=q.question, bonne_reponse=q.bonne_reponse,
+                            mauvaise_reponse=q.mauvaise_reponse, origine="red_flag"))
+        if len(result) >= limit:
+            return result
+
+    # 2. Questions liées aux données manquantes (criticité décroissante).
+    rank = {"MAJEUR": 2, "MINEUR": 1}
+    missing = sorted(build_missing_data(signals, round_name, config),
+                     key=lambda m: -rank.get(m.criticite, 0))
+    for m in missing:
+        add(KeyQuestion(
+            question=f"Donnée attendue absente du deck : {m.label}. Pourquoi, et quelle est la valeur réelle ?",
+            bonne_reponse="", mauvaise_reponse="", origine="donnee_manquante"))
+        if len(result) >= limit:
+            return result
+
+    # 3. Compléter avec les questions d'analyste du round (poids décroissant).
+    for dim in sorted(questions_cfg, key=lambda d: (-_round_weight(round_name, d), d)):
+        q = questions_cfg[dim]
+        add(KeyQuestion(question=q.question, bonne_reponse=q.bonne_reponse,
+                        mauvaise_reponse=q.mauvaise_reponse, origine="referentiel"))
+        if len(result) >= limit:
+            return result
+
+    return result
+
+
 def build_memo_data(
     deck: DeckAnalysis,
     analysis: AnalysisResult,

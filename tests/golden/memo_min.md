@@ -65,3 +65,12 @@ Règles appliquées :
 ## Données manquantes
 
 - **Cap table (part fondateurs)** (MINEUR) : Donnée secondaire attendue au stade serie-a et absente du deck. L'absence d'une donnée est un signal, pas un neutre (référentiel §1.1).
+
+## Contre-analyse
+
+> Contre-analyse indisponible (erreur API).
+
+## Questions aux fondateurs
+
+1. Le burn multiple : combien coûte 1 EUR d'ARR net nouveau ?
+2. Donnée attendue absente du deck : Cap table (part fondateurs). Pourquoi, et quelle est la valeur réelle ?

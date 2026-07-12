@@ -4,11 +4,15 @@ red flags, données manquantes)."""
 from src.analysis import run_analysis
 from src.models import DeckSignals, RedFlag
 from src.output.memo_data import (
+    REVIEW_BANDEAU_DISPONIBLE,
+    REVIEW_BANDEAU_INDISPONIBLE,
     _grade_for,
     build_dashboard,
     build_dimensions,
+    build_founder_questions,
     build_missing_data,
     build_red_flag_rows,
+    build_review_block,
     filter_incoherences,
     load_memo_config,
 )
@@ -90,3 +94,35 @@ def test_missing_data_signaux_absents():
     assert "ARR" in labels  # revenue_amount None
     assert labels["ARR"].criticite == "MAJEUR"
     assert "référentiel §1.1" in labels["ARR"].justification
+
+
+# --- Contre-analyse (section 6) ---
+
+def test_review_block_indisponible():
+    r = build_review_block(None)
+    assert r.disponible is False
+    assert r.bandeau == REVIEW_BANDEAU_INDISPONIBLE
+    assert r.contenu is None
+
+
+def test_review_block_disponible():
+    r = build_review_block("Le moat repose sur un accord exclusif non contractualise.")
+    assert r.disponible is True
+    assert r.bandeau == REVIEW_BANDEAU_DISPONIBLE
+    assert "moat" in r.contenu
+
+
+# --- Questions fondateurs (section 7) ---
+
+def test_founder_questions_priorite_et_limite():
+    # NRR à 80% -> red flag CRITIQUE sur business_model ; signaux surtout absents.
+    signals = DeckSignals(nrr_pct=80.0)
+    analysis = run_analysis(signals, "serie-a")
+    questions = build_founder_questions(analysis, signals, CONFIG)
+    assert len(questions) == 5  # plafonné à 5
+    assert questions[0].origine == "red_flag"
+    assert questions[0].question == CONFIG.questions_referentiel["serie-a"]["business_model"].question
+    # Textes uniques (déduplication).
+    assert len({q.question for q in questions}) == 5
+    # Le reste vient des données manquantes.
+    assert any(q.origine == "donnee_manquante" for q in questions)

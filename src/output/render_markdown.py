@@ -122,8 +122,32 @@ def _render_missing_data(memo: MemoData) -> list[str]:
     return lines
 
 
+def _render_review(memo: MemoData) -> list[str]:
+    """Section 6 : contre-analyse. Encart distinct (blockquote), mode dégradé géré."""
+    r = memo.contre_analyse
+    lines = ["## Contre-analyse", "", f"> {r.bandeau}"]
+    if r.disponible and r.contenu:
+        lines += ["", r.contenu]
+    return lines
+
+
+def _render_founder_questions(memo: MemoData) -> list[str]:
+    """Section 7 : questions aux fondateurs (liste numérotée)."""
+    lines = ["## Questions aux fondateurs", ""]
+    if not memo.questions_fondateurs:
+        lines.append("_Aucune question générée._")
+        return lines
+    for i, q in enumerate(memo.questions_fondateurs, start=1):
+        lines.append(f"{i}. {q.question}")
+        if q.bonne_reponse:
+            lines.append(f"   - Bonne réponse : {q.bonne_reponse}")
+        if q.mauvaise_reponse:
+            lines.append(f"   - Mauvaise réponse : {q.mauvaise_reponse}")
+    return lines
+
+
 def render_markdown(memo: MemoData) -> str:
-    """Assemble le mémo en Markdown (sections 0 à 5 pour l'instant).
+    """Assemble le mémo en Markdown (sections 0 à 7 pour l'instant).
 
     Les sections sont séparées par une ligne vide. Le document se termine par un
     retour à la ligne unique (convention fichier texte).
@@ -136,6 +160,8 @@ def render_markdown(memo: MemoData) -> str:
         _render_dimensions(memo),
         _render_red_flags(memo),
         _render_missing_data(memo),
+        _render_review(memo),
+        _render_founder_questions(memo),
     ]
     lines: list[str] = []
     for i, block in enumerate(blocks):

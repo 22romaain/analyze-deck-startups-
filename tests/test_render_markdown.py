@@ -104,7 +104,16 @@ def make_memo() -> MemoData:
             bandeau="Contre-analyse indisponible (erreur API).",
             contenu=None,
         ),
-        questions_fondateurs=[],
+        questions_fondateurs=[
+            KeyQuestion(
+                question="Le burn multiple : combien coûte 1 EUR d'ARR net nouveau ?",
+                bonne_reponse="", mauvaise_reponse="", origine="red_flag",
+            ),
+            KeyQuestion(
+                question="Donnée attendue absente du deck : Cap table (part fondateurs). Pourquoi, et quelle est la valeur réelle ?",
+                bonne_reponse="", mauvaise_reponse="", origine="donnee_manquante",
+            ),
+        ],
         annexes=Annexes(methodologie="", limites="", extraction_brute={}),
     )
 
@@ -113,3 +122,10 @@ def test_render_markdown_golden():
     produced = render_markdown(make_memo())
     expected = GOLDEN.read_text(encoding="utf-8")
     assert produced == expected
+
+
+def test_render_degradation_contre_analyse():
+    # Sans contre-analyse : l'encart dégradé apparaît, aucune trace du bandeau "disponible".
+    md = render_markdown(make_memo())
+    assert "Contre-analyse indisponible (erreur API)." in md
+    assert "Critique générée par LLM" not in md
