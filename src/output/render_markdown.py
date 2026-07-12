@@ -79,8 +79,51 @@ def _render_dashboard(memo: MemoData) -> list[str]:
     return lines
 
 
+def _render_dimensions(memo: MemoData) -> list[str]:
+    """Section 3 : analyse par dimension (score, grade, poids, règles, red flags inline)."""
+    lines = ["## Analyse par dimension"]
+    if not memo.dimensions:
+        lines.append("")
+        lines.append("_Aucune dimension notée pour ce round._")
+        return lines
+    for d in memo.dimensions:
+        lines += ["", f"### {d.label} — {d.score:.0f}/100 (grade {d.grade}, poids {d.weight:.0%})"]
+        lines += ["", "Règles appliquées :"]
+        lines += [f"- {regle}" for regle in d.regle_appliquee]
+        if d.red_flags_inline:
+            lines += ["", "Red flags :"]
+            lines += [f"- [{r.severity}] {r.message}" for r in d.red_flags_inline]
+    return lines
+
+
+def _render_red_flags(memo: MemoData) -> list[str]:
+    """Section 4 : tableau des red flags + sous-section incohérences internes."""
+    lines = ["## Red flags", ""]
+    if memo.red_flags:
+        lines += ["| Sévérité | Dimension | Message |", "| --- | --- | --- |"]
+        lines += [f"| {r.severity} | {r.label_dimension} | {r.message} |" for r in memo.red_flags]
+    else:
+        lines.append("_Aucun red flag détecté._")
+    lines += ["", "### Incohérences internes"]
+    if memo.incoherences:
+        lines += [f"- [{r.severity}] {r.label_dimension} : {r.message}" for r in memo.incoherences]
+    else:
+        lines.append("_Aucune incohérence interne détectée._")
+    return lines
+
+
+def _render_missing_data(memo: MemoData) -> list[str]:
+    """Section 5 : données attendues au stade et absentes du deck."""
+    lines = ["## Données manquantes", ""]
+    if memo.donnees_manquantes:
+        lines += [f"- **{m.label}** ({m.criticite}) : {m.justification}" for m in memo.donnees_manquantes]
+    else:
+        lines.append("_Aucune donnée attendue manquante._")
+    return lines
+
+
 def render_markdown(memo: MemoData) -> str:
-    """Assemble le mémo en Markdown (sections 0-1-2 pour l'instant).
+    """Assemble le mémo en Markdown (sections 0 à 5 pour l'instant).
 
     Les sections sont séparées par une ligne vide. Le document se termine par un
     retour à la ligne unique (convention fichier texte).
@@ -90,6 +133,9 @@ def render_markdown(memo: MemoData) -> str:
         _render_verdict(memo),
         _render_recommandation(memo),
         _render_dashboard(memo),
+        _render_dimensions(memo),
+        _render_red_flags(memo),
+        _render_missing_data(memo),
     ]
     lines: list[str] = []
     for i, block in enumerate(blocks):

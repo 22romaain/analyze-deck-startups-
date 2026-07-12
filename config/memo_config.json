@@ -40,6 +40,18 @@
       {"signal": "runway_months", "label": "Runway", "criticite": "MINEUR"}
     ]
   },
+  "benchmarks_par_round": {
+    "serie-a": {
+      "churn_rate_pct": {"top": 2, "norme": 3, "unite": "%/mois"},
+      "burn_multiple": {"top": 1.5, "norme": 2.0, "unite": "x"},
+      "runway_months": {"top": 18, "norme": 12, "unite": " mois"}
+    },
+    "serie-b": {
+      "nrr_pct": {"top": 110, "norme": 100, "unite": "%"},
+      "burn_multiple": {"top": 1.5, "norme": 2.0, "unite": "x"},
+      "churn_rate_pct": {"top": 2, "norme": 3, "unite": "%/mois"}
+    }
+  },
   "questions_referentiel": {
     "pre-seed": {
       "equipe": {"question": "Pourquoi CETTE équipe sur CE problème ? Qu'ont-ils vu que les autres n'ont pas vu ?", "bonne_reponse": "", "mauvaise_reponse": ""},

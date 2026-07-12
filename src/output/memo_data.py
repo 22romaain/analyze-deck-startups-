@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from src.analysis import ROUND_WEIGHTS
 from src.models import (
@@ -56,12 +56,22 @@ class QuestionRef(BaseModel):
     mauvaise_reponse: str = ""
 
 
+class BenchmarkBand(BaseModel):
+    """Bornes de comparaison d'une métrique. Le sens (plus bas ou plus haut = mieux)
+    se déduit de l'ordre : si top <= norme, plus bas est meilleur (ex: churn) ;
+    sinon plus haut est meilleur (ex: runway). On n'invente jamais une borne absente."""
+    top: float     # seuil du top quartile
+    norme: float   # seuil de la norme acceptable
+    unite: str = ""
+
+
 class MemoConfig(BaseModel):
     """Config complète du mémo. Les invariants métier sont vérifiés ci-dessous."""
     verdict: VerdictConfig
     grades: list[GradeBand]
     societe_fallback: str
     attendus_par_round: dict[str, list[AttenduSignal]]
+    benchmarks_par_round: dict[str, dict[str, BenchmarkBand]] = Field(default_factory=dict)
     questions_referentiel: dict[str, dict[str, QuestionRef]]
     version_referentiel: str
 
@@ -405,6 +415,158 @@ def select_question_decisive(
         question="Quelle est la principale incertitude non levée par ce deck ?",
         bonne_reponse="", mauvaise_reponse="", origine="referentiel",
     )
+
+
+# --- Tableau de bord (section 2) ---
+
+def _grade_for(score: float, config: MemoConfig) -> str:
+    """Traduit un score en grade via les bornes de la config (triées décroissantes)."""
+    for band in config.grades:
+        if score >= band.min:
+            return band.grade
+    return config.grades[-1].grade  # filet : le dernier a min == 0
+
+
+def _format_signal_value(signal: str, signals: DeckSignals) -> str | None:
+    """Met en forme un signal pour l'affichage, avec son unité. None si absent."""
+    value = getattr(signals, signal)
+    if value is None:
+        return None
+    if signal in ("has_why_now", "has_technical_founder", "product_is_tech"):
+        return "Oui" if value else "Non"
+    if signal == "revenue_amount":
+        currency = signals.revenue_currency or ""
+        return f"{value:,.0f} {currency}".strip().replace(",", " ")
+    if signal == "churn_rate_pct":
+        suffixe = "/mois" if signals.churn_period == "monthly" else "/an"
+        return f"{value:.1f}%{suffixe}"
+    if signal == "growth_rate_pct":
+        return f"{value:.0f}% {signals.growth_period or ''}".strip()
+    if signal == "runway_months":
+        return f"{value:.0f} mois"
+    if signal == "burn_multiple":
+        return f"{value:.1f}x"
+    if signal.endswith("_pct"):
+        return f"{value:.0f}%"
+    return str(value)
+
+
+def _dashboard_status(
+    signal: str, signals: DeckSignals, config: MemoConfig, round_name: str
+) -> DashboardStatut:
+    """Statut d'une métrique : absente, non évaluable (pas de benchmark), ou comparée."""
+    value = getattr(signals, signal)
+    if value is None:
+        return "ABSENT"
+    bench = config.benchmarks_par_round.get(round_name, {}).get(signal)
+    if bench is None:
+        return "NON_EVALUABLE"
+    # Le benchmark churn est mensuel : un churn annuel n'est pas comparable ici.
+    if signal == "churn_rate_pct" and signals.churn_period != "monthly":
+        return "NON_EVALUABLE"
+    lower_is_better = bench.top <= bench.norme
+    if lower_is_better:
+        if value <= bench.top:
+            return "TOP_QUARTILE"
+        return "DANS_LA_NORME" if value <= bench.norme else "SOUS_LA_BARRE"
+    if value >= bench.top:
+        return "TOP_QUARTILE"
+    return "DANS_LA_NORME" if value >= bench.norme else "SOUS_LA_BARRE"
+
+
+def build_dashboard(
+    signals: DeckSignals, round_name: str, config: MemoConfig
+) -> list[DashboardRow]:
+    """Une ligne par signal attendu au stade : valeur formatée, statut, benchmark."""
+    benchmarks = config.benchmarks_par_round.get(round_name, {})
+    rows: list[DashboardRow] = []
+    for attendu in config.attendus_par_round.get(round_name, []):
+        bench = benchmarks.get(attendu.signal)
+        benchmark_str = (
+            f"top {bench.top:g} / norme {bench.norme:g}{bench.unite}" if bench else None
+        )
+        rows.append(DashboardRow(
+            metrique=attendu.label,
+            valeur=_format_signal_value(attendu.signal, signals),
+            statut=_dashboard_status(attendu.signal, signals, config, round_name),
+            benchmark=benchmark_str,
+        ))
+    return rows
+
+
+# --- Analyse par dimension, red flags, données manquantes (sections 3-4-5) ---
+
+def _to_red_flag_row(flag: RedFlag) -> RedFlagRow:
+    """Convertit un RedFlag brut en ligne de mémo, avec libellé lisible et marquage
+    des incohérences internes (convention : message préfixé 'Incohérence interne')."""
+    return RedFlagRow(
+        severity=flag.severity,
+        dimension=flag.dimension,
+        label_dimension=DIMENSION_LABELS.get(flag.dimension, flag.dimension),
+        message=flag.message,
+        est_incoherence=flag.message.startswith("Incohérence interne"),
+    )
+
+
+def build_dimensions(analysis: AnalysisResult, config: MemoConfig) -> list[DimensionSection]:
+    """Sections par dimension du round, triées par poids décroissant (départage alpha)."""
+    weights = ROUND_WEIGHTS.get(analysis.round, {})
+    by_dim = {d.dimension: d for d in analysis.dimension_scores}
+    flags_by_dim: dict[str, list[RedFlag]] = {}
+    for f in analysis.red_flags:
+        flags_by_dim.setdefault(f.dimension, []).append(f)
+
+    ordered = sorted(weights.keys(), key=lambda dim: (-weights[dim], dim))
+    sections: list[DimensionSection] = []
+    for dim in ordered:
+        d = by_dim.get(dim)
+        if d is None:
+            continue
+        sections.append(DimensionSection(
+            dimension=dim, label=d.label, score=d.score, weight=d.weight,
+            grade=_grade_for(d.score, config), regle_appliquee=d.rationale,
+            red_flags_inline=[_to_red_flag_row(f) for f in flags_by_dim.get(dim, [])],
+        ))
+    return sections
+
+
+# Ordre d'affichage des red flags : le plus grave en premier.
+_SEVERITY_ORDER = {"CRITIQUE": 0, "MAJEUR": 1, "MINEUR": 2}
+
+
+def build_red_flag_rows(red_flags: list[RedFlag]) -> list[RedFlagRow]:
+    """Toutes les alertes en lignes de mémo, triées par sévérité décroissante (tri stable)."""
+    rows = [_to_red_flag_row(f) for f in red_flags]
+    return sorted(rows, key=lambda r: _SEVERITY_ORDER[r.severity])
+
+
+def filter_incoherences(rows: list[RedFlagRow]) -> list[RedFlagRow]:
+    """Sous-ensemble des lignes qui sont des incohérences internes."""
+    return [r for r in rows if r.est_incoherence]
+
+
+def _missing_justification(criticite: Severity, round_name: str) -> str:
+    """Justification d'une donnée manquante, ancrée sur la doctrine (jamais un jugement inventé)."""
+    poids = "critique" if criticite == "MAJEUR" else "secondaire"
+    return (
+        f"Donnée {poids} attendue au stade {round_name} et absente du deck. "
+        "L'absence d'une donnée est un signal, pas un neutre (référentiel §1.1)."
+    )
+
+
+def build_missing_data(
+    signals: DeckSignals, round_name: str, config: MemoConfig
+) -> list[MissingData]:
+    """Signaux attendus au stade dont la valeur est absente (None)."""
+    missing: list[MissingData] = []
+    for attendu in config.attendus_par_round.get(round_name, []):
+        if getattr(signals, attendu.signal) is None:
+            missing.append(MissingData(
+                label=attendu.label,
+                criticite=attendu.criticite,
+                justification=_missing_justification(attendu.criticite, round_name),
+            ))
+    return missing
 
 
 def build_memo_data(

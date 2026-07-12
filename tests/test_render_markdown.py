@@ -10,9 +10,12 @@ from pathlib import Path
 from src.output.memo_data import (
     Annexes,
     DashboardRow,
+    DimensionSection,
     KeyQuestion,
     MemoData,
+    MissingData,
     Reason,
+    RedFlagRow,
     ReviewBlock,
     Verdict,
 )
@@ -63,10 +66,39 @@ def make_memo() -> MemoData:
             DashboardRow(metrique="Burn multiple", valeur=None, statut="ABSENT", benchmark="~1,2x"),
             DashboardRow(metrique="NRR", valeur="105%", statut="NON_EVALUABLE", benchmark=None),
         ],
-        dimensions=[],
-        red_flags=[],
-        incoherences=[],
-        donnees_manquantes=[],
+        dimensions=[
+            DimensionSection(
+                dimension="traction", label="Traction", score=82.0, weight=0.30, grade="A",
+                regle_appliquee=["Base neutre : 60.", "+10 : Revenu établi (200,000 EUR)."],
+                red_flags_inline=[RedFlagRow(
+                    severity="MINEUR", dimension="traction", label_dimension="Traction",
+                    message="Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.",
+                    est_incoherence=True,
+                )],
+            ),
+            DimensionSection(
+                dimension="business_model", label="Business Model", score=70.0, weight=0.20, grade="B",
+                regle_appliquee=["Base neutre : 60.", "+10 : Burn multiple de 1.2, capital efficace."],
+                red_flags_inline=[],
+            ),
+        ],
+        red_flags=[
+            RedFlagRow(severity="MAJEUR", dimension="marche", label_dimension="Marché",
+                       message="TAM calculé uniquement en top-down, sans validation bottom-up.",
+                       est_incoherence=False),
+            RedFlagRow(severity="MINEUR", dimension="traction", label_dimension="Traction",
+                       message="Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.",
+                       est_incoherence=True),
+        ],
+        incoherences=[
+            RedFlagRow(severity="MINEUR", dimension="traction", label_dimension="Traction",
+                       message="Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.",
+                       est_incoherence=True),
+        ],
+        donnees_manquantes=[
+            MissingData(label="Cap table (part fondateurs)", criticite="MINEUR",
+                        justification="Donnée secondaire attendue au stade serie-a et absente du deck. L'absence d'une donnée est un signal, pas un neutre (référentiel §1.1)."),
+        ],
         contre_analyse=ReviewBlock(
             disponible=False,
             bandeau="Contre-analyse indisponible (erreur API).",

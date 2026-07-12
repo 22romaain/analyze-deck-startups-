@@ -34,3 +34,34 @@ Le moteur de croissance est-il identifié et répétable, ou la traction est-ell
 | Churn | 2%/mois | Top quartile | < 2%/mois |
 | Burn multiple | — | Absent | ~1,2x |
 | NRR | 105% | Non évaluable | — |
+
+## Analyse par dimension
+
+### Traction — 82/100 (grade A, poids 30%)
+
+Règles appliquées :
+- Base neutre : 60.
+- +10 : Revenu établi (200,000 EUR).
+
+Red flags :
+- [MINEUR] Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.
+
+### Business Model — 70/100 (grade B, poids 20%)
+
+Règles appliquées :
+- Base neutre : 60.
+- +10 : Burn multiple de 1.2, capital efficace.
+
+## Red flags
+
+| Sévérité | Dimension | Message |
+| --- | --- | --- |
+| MAJEUR | Marché | TAM calculé uniquement en top-down, sans validation bottom-up. |
+| MINEUR | Traction | Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a. |
+
+### Incohérences internes
+- [MINEUR] Traction : Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.
+
+## Données manquantes
+
+- **Cap table (part fondateurs)** (MINEUR) : Donnée secondaire attendue au stade serie-a et absente du deck. L'absence d'une donnée est un signal, pas un neutre (référentiel §1.1).
