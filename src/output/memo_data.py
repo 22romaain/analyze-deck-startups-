@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
-from src.analysis import ROUND_WEIGHTS
+from src.analysis import BASELINE_SCORE, ROUND_WEIGHTS, SEVERITY_PENALTY
 from src.models import (
     DIMENSION_LABELS,
     AnalysisResult,
@@ -637,22 +637,67 @@ def build_founder_questions(
     return result
 
 
+# --- Annexes (section 8) ---
+
+def build_annexes(deck: DeckAnalysis, config: MemoConfig, review_disponible: bool) -> Annexes:
+    """Méthodologie (3 couches + mécanique de scoring réelle), limites, extraction brute."""
+    methodologie = (
+        "Trois couches : (1) extraction des slides par LLM vision, "
+        "(2) scoring déterministe sans LLM, (3) mise en forme du mémo. "
+        f"Score par dimension : base {BASELINE_SCORE:.0f}, plus bonus de preuve, "
+        f"moins pénalités de red flag (CRITIQUE -{SEVERITY_PENALTY['CRITIQUE']:.0f}, "
+        f"MAJEUR -{SEVERITY_PENALTY['MAJEUR']:.0f}, MINEUR -{SEVERITY_PENALTY['MINEUR']:.0f}), "
+        "borné à [0, 100]. Score global = moyenne des dimensions pondérée par les "
+        f"poids du round. Référentiel : {config.version_referentiel}."
+    )
+    limites = [
+        "Traçabilité slide reportée : les valeurs n'affichent pas encore leur slide source.",
+        "Benchmarks partiels : une métrique sans repère encodé est non évaluable.",
+        "Réponses type des questions à rédiger par un analyste, jamais générées.",
+    ]
+    if not review_disponible:
+        limites.append("Contre-analyse LLM absente (brique non encore construite).")
+    return Annexes(
+        methodologie=methodologie,
+        limites=" ".join(limites),
+        extraction_brute=deck.model_dump(),
+    )
+
+
 def build_memo_data(
     deck: DeckAnalysis,
     analysis: AnalysisResult,
     signals: DeckSignals,
     config: MemoConfig,
-    review: object | None = None,
+    review: str | None = None,
     today: date | None = None,
+    societe: str | None = None,
 ) -> MemoData:
-    """Assemblera l'agrégat complet du mémo (en construction).
+    """Assemble l'agrégat complet du mémo à partir des trois couches amont.
 
-    Tranche 2 : les sous-fonctions (verdict, forces, faiblesses, question décisive)
-    existent et sont testées isolément. L'assemblage complet attend que les sections
-    tableau de bord, dimensions, red flags, données manquantes et annexes soient
-    implémentées (tranches 4 à 6). On refuse de produire un MemoData partiel plutôt
-    que de sortir un mémo silencieusement faux.
+    Ne calcule rien de nouveau : orchestre les sous-fonctions déjà testées et
+    laisse Pydantic vérifier que toutes les sections requises sont présentes.
+    `review` = contenu texte de la contre-analyse (None tant que la brique n'existe
+    pas). `societe` : nom extrait plus tard ; à défaut, fallback config.
     """
-    raise NotImplementedError(
-        "build_memo_data : agrégat complet non encore assemblé (voir tranches 4 à 6)."
+    day = today or date.today()
+    red_flag_rows = build_red_flag_rows(analysis.red_flags)
+    review_block = build_review_block(review)
+    return MemoData(
+        societe=societe or config.societe_fallback,
+        round=analysis.round,
+        ask_amount=deck.ask_amount,
+        date=day,
+        verdict=compute_verdict(analysis.global_score, analysis.red_flags, config),
+        forces=select_forces(analysis.dimension_scores),
+        faiblesses=select_faiblesses(analysis.dimension_scores, analysis.red_flags),
+        question_decisive=select_question_decisive(analysis, signals, config),
+        dashboard=build_dashboard(signals, analysis.round, config),
+        dimensions=build_dimensions(analysis, config),
+        red_flags=red_flag_rows,
+        incoherences=filter_incoherences(red_flag_rows),
+        donnees_manquantes=build_missing_data(signals, analysis.round, config),
+        contre_analyse=review_block,
+        questions_fondateurs=build_founder_questions(analysis, signals, config),
+        annexes=build_annexes(deck, config, review_block.disponible),
     )

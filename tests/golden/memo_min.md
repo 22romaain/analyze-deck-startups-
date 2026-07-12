@@ -74,3 +74,15 @@ Règles appliquées :
 
 1. Le burn multiple : combien coûte 1 EUR d'ARR net nouveau ?
 2. Donnée attendue absente du deck : Cap table (part fondateurs). Pourquoi, et quelle est la valeur réelle ?
+
+## Annexes
+
+### Méthodologie
+Trois couches : extraction LLM vision, scoring déterministe, mise en forme.
+
+### Limites
+Traçabilité slide reportée. Contre-analyse absente.
+
+### Extraction brute
+- **detected_round** : serie-a
+- **ask** : Levée de 8M EUR pour l'expansion EU.

@@ -146,8 +146,18 @@ def _render_founder_questions(memo: MemoData) -> list[str]:
     return lines
 
 
+def _render_annexes(memo: MemoData) -> list[str]:
+    """Section 8 : méthodologie, limites, extraction brute."""
+    a = memo.annexes
+    lines = ["## Annexes", "", "### Méthodologie", a.methodologie,
+             "", "### Limites", a.limites, "", "### Extraction brute"]
+    for key, value in a.extraction_brute.items():
+        lines.append(f"- **{key}** : {value}")
+    return lines
+
+
 def render_markdown(memo: MemoData) -> str:
-    """Assemble le mémo en Markdown (sections 0 à 7 pour l'instant).
+    """Assemble le mémo complet en Markdown (sections 0 à 8).
 
     Les sections sont séparées par une ligne vide. Le document se termine par un
     retour à la ligne unique (convention fichier texte).
@@ -162,6 +172,7 @@ def render_markdown(memo: MemoData) -> str:
         _render_missing_data(memo),
         _render_review(memo),
         _render_founder_questions(memo),
+        _render_annexes(memo),
     ]
     lines: list[str] = []
     for i, block in enumerate(blocks):

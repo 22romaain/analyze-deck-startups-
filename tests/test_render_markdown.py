@@ -114,7 +114,11 @@ def make_memo() -> MemoData:
                 bonne_reponse="", mauvaise_reponse="", origine="donnee_manquante",
             ),
         ],
-        annexes=Annexes(methodologie="", limites="", extraction_brute={}),
+        annexes=Annexes(
+            methodologie="Trois couches : extraction LLM vision, scoring déterministe, mise en forme.",
+            limites="Traçabilité slide reportée. Contre-analyse absente.",
+            extraction_brute={"detected_round": "serie-a", "ask": "Levée de 8M EUR pour l'expansion EU."},
+        ),
     )
 
 
