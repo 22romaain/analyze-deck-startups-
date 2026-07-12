@@ -8,7 +8,13 @@ Tranche 3 : sections 0 (verdict), 1 (recommandation), 2 (tableau de bord).
 Les sections 3 à 8 seront ajoutées aux tranches suivantes.
 """
 
+import re
+from pathlib import Path
+
 from src.output.memo_data import MemoData, Reason
+
+# Dossier de sortie par défaut : output/ à la racine (rendu ignoré par git).
+DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "output"
 
 # Libellés lisibles des statuts du tableau de bord. Pur affichage (pas une décision :
 # le statut est déjà calculé en amont), on ne fait que traduire l'énum en français.
@@ -180,3 +186,26 @@ def render_markdown(memo: MemoData) -> str:
         if i < len(blocks) - 1:
             lines.append("")  # ligne vide entre sections
     return "\n".join(lines) + "\n"
+
+
+def _slugify(name: str) -> str:
+    """Nom de fichier sûr : lettres/chiffres, le reste devient '_'."""
+    slug = re.sub(r"[^\w]+", "_", name, flags=re.UNICODE).strip("_")
+    return slug or "societe"
+
+
+def output_path(memo: MemoData, extension: str, output_dir: Path | None = None) -> Path:
+    """Chemin de sortie partagé par les deux renderers : memo_{societe}_{date}.{ext}."""
+    directory = Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / f"memo_{_slugify(memo.societe)}_{memo.date.isoformat()}.{extension}"
+
+
+def write_markdown(memo: MemoData, output_dir: Path | None = None) -> Path:
+    """Écrit le mémo Markdown sur disque et retourne le chemin. Erreur claire si échec."""
+    path = output_path(memo, "md", output_dir)
+    try:
+        path.write_text(render_markdown(memo), encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(f"Écriture du mémo Markdown impossible ({path}) : {exc}") from exc
+    return path

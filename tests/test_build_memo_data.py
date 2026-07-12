@@ -3,6 +3,7 @@
 from datetime import date
 
 from src.analysis import run_analysis
+from src.main import build_and_write_memo
 from src.models import DeckAnalysis, DeckSignals
 from src.output.memo_data import build_memo_data, load_memo_config
 from src.output.render_markdown import render_markdown
@@ -51,3 +52,15 @@ def test_build_memo_data_avec_contre_analyse():
     )
     assert memo.contre_analyse.disponible is True
     assert "moat" in memo.contre_analyse.contenu
+
+
+def test_build_and_write_memo_ecrit_les_deux_fichiers(tmp_path):
+    # Pipeline déterministe (sans LLM) : scoring -> mémo -> écriture des 2 fichiers.
+    signals = DeckSignals(nrr_pct=80.0)
+    memo, md_path, docx_path = build_and_write_memo(
+        make_deck(), signals, CONFIG, output_dir=tmp_path,
+    )
+    assert md_path.exists() and md_path.suffix == ".md"
+    assert docx_path.exists() and docx_path.suffix == ".docx"
+    assert md_path.stem == docx_path.stem  # même nom, extensions différentes
+    assert md_path.read_text(encoding="utf-8").startswith("# Mémo d'investissement")

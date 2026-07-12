@@ -7,7 +7,6 @@ Choix python-docx (vs docxtpl) : contenu dynamique et déjà structuré, on pose
 mise en forme en code sans maintenir un template Word en parallèle.
 """
 
-import re
 from pathlib import Path
 
 from docx import Document
@@ -17,10 +16,7 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 
 from src.output.memo_data import MemoData
-from src.output.render_markdown import STATUT_LABELS, VIDE
-
-# Dossier de sortie par défaut : output/ à la racine (rendu ignoré par git).
-DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "output"
+from src.output.render_markdown import STATUT_LABELS, VIDE, output_path
 
 
 def _add_table(document: Document, headers: list[str], rows: list[list[str]]) -> Table:
@@ -151,18 +147,6 @@ def _docx_annexes(doc: Document, memo: MemoData) -> None:
         doc.add_paragraph(f"{key} : {value}", style="List Bullet")
 
 
-def _slugify(name: str) -> str:
-    """Nom de fichier sûr : lettres/chiffres, le reste devient '_'."""
-    slug = re.sub(r"[^\w]+", "_", name, flags=re.UNICODE).strip("_")
-    return slug or "societe"
-
-
-def _output_path(memo: MemoData, output_dir: Path | None) -> Path:
-    directory = Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory / f"memo_{_slugify(memo.societe)}_{memo.date.isoformat()}.docx"
-
-
 def render_docx(memo: MemoData, output_dir: Path | None = None) -> Path:
     """Écrit le mémo complet en .docx et retourne le chemin du fichier.
 
@@ -181,7 +165,7 @@ def render_docx(memo: MemoData, output_dir: Path | None = None) -> Path:
     _docx_founder_questions(doc, memo)
     _docx_annexes(doc, memo)
 
-    path = _output_path(memo, output_dir)
+    path = output_path(memo, "docx", output_dir)
     try:
         doc.save(str(path))
     except OSError as exc:
