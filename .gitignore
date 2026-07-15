@@ -20,3 +20,11 @@ decks/
 
 # Cache pytest
 .pytest_cache/
+
+# Corpus RAG : supports de cours personnels (prives, potentiellement volumineux).
+# On versionne le dossier et son README, jamais son contenu.
+/courses/*
+!/courses/README.md
+
+# Base vectorielle ChromaDB (regenerable a partir de courses/).
+/chroma_db/
