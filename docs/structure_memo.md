@@ -237,9 +237,10 @@ elle n'apparaît pas. **L'extraction ne capture pas encore la slide.** Donc :
 
 - Aucun calcul, tri ou condition métier. Toute donnée dérivée vient de `MemoData`.
 - `render_markdown` : titres `#`/`##`, tableaux markdown pour §2 et §4.
-- `render_docx` (python-docx) : `Heading 1/2`, tableaux Word natifs pour §2 et §4,
-  encadré visuellement distinct (fond grisé) pour §6. Nom de sortie
-  `memo_{societe}_{YYYY-MM-DD}.docx` dans `output/` (créé si absent).
+- `render_docx` (python-docx) : rendu **brut** (choix ultérieur). Le docx est un
+  simple report du texte Markdown en paragraphes, sans styles de titre, sans
+  tableaux Word ni encadré. Les lignes de séparation de tableau markdown sont
+  sautées. Nom de sortie `memo_{societe}_{YYYY-MM-DD}.docx` dans `output/` (créé si absent).
 
 ### Choix librairie Word (à expliquer avant install)
 - `python-docx` : construit le document par API (paragraphes, styles, tableaux).
@@ -270,7 +271,7 @@ elle n'apparaît pas. **L'extraction ne capture pas encore la slide.** Donc :
   caractère par caractère). Le golden test fige une sortie de référence dans un
   fichier ; toute dérive future casse le test volontairement.
 - `render_docx` : le fichier se crée, se relit avec python-docx, contient le
-  bandeau §6 et le bon nombre de tableaux. Pas de comparaison binaire.
+  bandeau §6 en texte, aucun tableau Word (rendu brut). Pas de comparaison binaire.
 - Invariant traçabilité : aucun `DashboardRow`/`Reason` sans slide quand la valeur
   a une source (vacuement vrai aujourd'hui, actif dès les slides ajoutées).
 - Dégradation : `MemoData` sans review -> markdown contient l'encart, aucune trace
