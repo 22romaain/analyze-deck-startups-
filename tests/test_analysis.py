@@ -1,7 +1,40 @@
 """Tests des règles déterministes de red flags (detect_red_flags), volet cap table §4.3."""
 
-from src.analysis import detect_dilution_flag, detect_red_flags
+from src.analysis import detect_dilution_flag, detect_red_flags, run_analysis
 from src.models import DeckSignals
+
+
+def _score(result, dim):
+    return next(d.score for d in result.dimension_scores if d.dimension == dim)
+
+
+def test_majeur_plafonne_la_dimension_a_40():
+    # TAM top-down -> MAJEUR sur marche : la dimension est plafonnee a 40, bonus compris.
+    result = run_analysis(DeckSignals(tam_methodology="top-down", has_why_now=True), "serie-a")
+    assert _score(result, "marche") == 40.0
+
+
+def test_mineur_retire_dix_points():
+    # TAM absent hors pre-seed -> MINEUR sur marche : base 60 - 10 = 50.
+    result = run_analysis(DeckSignals(), "serie-a")
+    assert _score(result, "marche") == 50.0
+
+
+def test_critique_plafonne_le_global_a_35():
+    # Produit tech sans fondateur technique -> CRITIQUE : score global plafonne a 35.
+    result = run_analysis(DeckSignals(product_is_tech=True, has_technical_founder=False,
+                                      founder_ownership_pct=80.0), "serie-a")
+    assert result.global_score <= 35.0
+
+
+def test_trois_majeurs_plafonnent_le_global():
+    # 3 MAJEURS accumules = 1 CRITIQUE (§5.2) -> global plafonne a 35, sans aucun CRITIQUE.
+    signals = DeckSignals(tam_methodology="top-down", founder_ownership_pct=30.0,
+                          customer_concentration_top1_pct=60.0)  # marche + equipe + traction
+    result = run_analysis(signals, "serie-a")
+    assert sum(1 for f in result.red_flags if f.severity == "CRITIQUE") == 0
+    assert sum(1 for f in result.red_flags if f.severity == "MAJEUR") >= 3
+    assert result.global_score <= 35.0
 
 
 def test_fondateurs_sous_seuil_seed_flag_majeur():

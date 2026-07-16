@@ -47,12 +47,11 @@ ROUND_WEIGHTS: dict[str, dict[str, float]] = {
     },
 }
 
-# Pénalité de score par sévérité de red flag (points retirés sur 100).
-SEVERITY_PENALTY: dict[str, float] = {
-    "CRITIQUE": 35.0,
-    "MAJEUR": 18.0,
-    "MINEUR": 8.0,
-}
+# Mécanique des red flags (référentiel §5.2), par plafonnement et non par soustraction.
+MINOR_PENALTY: float = 10.0          # MINEUR : -10 sur la dimension.
+MAJOR_DIMENSION_CAP: float = 40.0    # MAJEUR (ou pire) : plafonne la dimension à 40.
+GLOBAL_CRITICAL_CAP: float = 35.0    # CRITIQUE : plafonne le score global à 35.
+MAJORS_FOR_CRITICAL: int = 3         # Accumulation : 3 MAJEURS = 1 CRITIQUE.
 
 # Score de départ de chaque dimension avant ajustements.
 # 60 = neutre : ni preuve forte, ni alerte. Les bonus et pénalités font bouger.
@@ -307,14 +306,21 @@ def score_dimensions(
             score += points
             rationale.append(f"+{points:.0f} : {why}")
 
+        # §5.2 : MINEUR retire des points ; MAJEUR/CRITIQUE plafonnent la dimension.
+        # Le plafond MAJEUR s'applique après les bonus (un bon dossier reste plafonné).
+        dimension_cap = 100.0
         for flag in red_flags:
-            if flag.dimension == dim:
-                penalty = SEVERITY_PENALTY[flag.severity]
-                score -= penalty
-                rationale.append(f"-{penalty:.0f} [{flag.severity}] : {flag.message}")
+            if flag.dimension != dim:
+                continue
+            if flag.severity == "MINEUR":
+                score -= MINOR_PENALTY
+                rationale.append(f"-{MINOR_PENALTY:.0f} [MINEUR] : {flag.message}")
+            else:  # MAJEUR ou CRITIQUE : plafonnement de la dimension à 40
+                dimension_cap = min(dimension_cap, MAJOR_DIMENSION_CAP)
+                rationale.append(f"plafond {MAJOR_DIMENSION_CAP:.0f} [{flag.severity}] : {flag.message}")
 
-        # On borne le score dans [0, 100] pour éviter des valeurs absurdes.
-        score = max(0.0, min(100.0, score))
+        # On borne dans [0, 100] puis on applique le plafond de sévérité.
+        score = max(0.0, min(dimension_cap, score))
 
         scores.append(DimensionScore(
             dimension=dim, label=label, score=score,
@@ -415,6 +421,12 @@ def run_analysis(
 
     # Score global = moyenne pondérée des dimensions par les poids du round.
     global_score = sum(ds.score * ds.weight for ds in dimension_scores)
+
+    # §5.2 : un CRITIQUE (ou 3 MAJEURS accumulés = 1 CRITIQUE) plafonne le global à 35.
+    nb_critiques = sum(1 for f in red_flags if f.severity == "CRITIQUE")
+    nb_majeurs = sum(1 for f in red_flags if f.severity == "MAJEUR")
+    if nb_critiques >= 1 or nb_majeurs >= MAJORS_FOR_CRITICAL:
+        global_score = min(global_score, GLOBAL_CRITICAL_CAP)
 
     return AnalysisResult(
         round=round_name,

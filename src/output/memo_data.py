@@ -14,7 +14,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
-from src.analysis import BASELINE_SCORE, ROUND_WEIGHTS, SEVERITY_PENALTY
+from src.analysis import (
+    BASELINE_SCORE,
+    GLOBAL_CRITICAL_CAP,
+    MAJOR_DIMENSION_CAP,
+    MAJORS_FOR_CRITICAL,
+    MINOR_PENALTY,
+    ROUND_WEIGHTS,
+)
 from src.models import (
     DIMENSION_LABELS,
     AnalysisResult,
@@ -727,11 +734,12 @@ def build_annexes(deck: DeckAnalysis, config: MemoConfig, review_disponible: boo
     methodologie = (
         "Trois couches : (1) extraction des slides par LLM vision, "
         "(2) scoring déterministe sans LLM, (3) mise en forme du mémo. "
-        f"Score par dimension : base {BASELINE_SCORE:.0f}, plus bonus de preuve, "
-        f"moins pénalités de red flag (CRITIQUE -{SEVERITY_PENALTY['CRITIQUE']:.0f}, "
-        f"MAJEUR -{SEVERITY_PENALTY['MAJEUR']:.0f}, MINEUR -{SEVERITY_PENALTY['MINEUR']:.0f}), "
-        "borné à [0, 100]. Score global = moyenne des dimensions pondérée par les "
-        f"poids du round. Référentiel : {config.version_referentiel}."
+        f"Score par dimension : base {BASELINE_SCORE:.0f}, plus bonus de preuve. "
+        f"Mécanique red flags (§5.2) : MINEUR -{MINOR_PENALTY:.0f} sur la dimension ; "
+        f"MAJEUR plafonne la dimension à {MAJOR_DIMENSION_CAP:.0f} ; CRITIQUE (ou "
+        f"{MAJORS_FOR_CRITICAL} MAJEURS accumulés) plafonne le score global à "
+        f"{GLOBAL_CRITICAL_CAP:.0f}. Score global = moyenne des dimensions pondérée par "
+        f"les poids du round. Référentiel : {config.version_referentiel}."
     )
     limites = [
         "Traçabilité slide reportée : les valeurs n'affichent pas encore leur slide source.",
