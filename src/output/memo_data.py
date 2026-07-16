@@ -514,6 +514,21 @@ def build_dashboard(
 # Longueur max d'un extrait cité : le mémo cite une source, il ne recopie pas un cours.
 DOCTRINE_EXTRACT_CHARS = 300
 
+# Requête de doctrine par dimension : plus ciblée que le libellé seul, pour retrouver
+# le bon passage de cours. À défaut d'entrée, on retombe sur le libellé de la dimension.
+DIMENSION_DOCTRINE_QUERY: dict[str, str] = {
+    "equipe": "équipe fondatrice, founder-market fit, profil technique, complémentarité des fondateurs",
+    "probleme": "problème douloureux, pain point client, urgence et fréquence du besoin",
+    "solution": "solution produit, différenciation, avantage produit défendable",
+    "marche": "taille de marché TAM SAM SOM, bottom-up contre top-down, why now",
+    "business_model": "business model, unit economics, marge, burn multiple, rétention nette",
+    "traction": "traction, croissance, rétention, churn, métriques d'usage",
+    "concurrence": "concurrence, moat, barrière à l'entrée, défendabilité durable",
+    "go_to_market": "go-to-market, acquisition clients, canaux de distribution, cycle de vente",
+    "financials": "financials, runway, burn, projections, hypothèses de croissance",
+    "ask": "montant levé, valorisation, dilution, use of funds",
+}
+
 # Au-delà de cette distance, un passage est jugé trop peu pertinent pour être cité.
 # Calibré sur le corpus actuel (embeddings MiniLM) : bons matchs < ~1.0, hors-sujet
 # vers 1.3+. Mieux vaut pas de citation qu'une mauvaise. Réglable si le corpus change.
@@ -586,7 +601,9 @@ def build_dimensions(
         want_doctrine = retriever is not None and (
             doctrine_dimensions is None or dim in doctrine_dimensions
         )
-        cite = cite_doctrine(d.label, retriever=retriever) if want_doctrine else []
+        # Requête ciblée par dimension (repli sur le libellé si non mappée).
+        query = DIMENSION_DOCTRINE_QUERY.get(dim, d.label)
+        cite = cite_doctrine(query, retriever=retriever) if want_doctrine else []
         sections.append(DimensionSection(
             dimension=dim, label=d.label, score=d.score, weight=d.weight,
             grade=_grade_for(d.score, config), regle_appliquee=d.rationale,
