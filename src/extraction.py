@@ -47,6 +47,9 @@ Clés de "signals" :
 - has_technical_founder : true/false/null. Au moins un fondateur au profil technique.
 - product_is_tech : true/false/null. Le coeur du produit est technique.
 - founder_ownership_pct : nombre ou null. % du capital détenu par les fondateurs.
+- pre_money_valuation : nombre ou null. Valorisation pre-money annoncée pour ce tour, montant brut (ne convertis pas).
+- pre_money_currency : "EUR" | "USD" | "GBP" | null. Devise de la valorisation ci-dessus.
+- new_option_pool_pct : nombre ou null. Option pool créé au tour, en % du post-money.
 - tam_methodology : "top-down" | "bottom-up" | "both" | null. Méthode de calcul du TAM.
 - has_why_now : true/false/null. Le deck justifie explicitement le 'why now'.
 - revenue_amount : nombre ou null. Revenu ou ARR annuel, montant brut tel qu'écrit (ne convertis pas).
@@ -65,6 +68,7 @@ est inutilisable. Ces champs vont par paires indissociables :
 - churn_rate_pct <-> churn_period
 - growth_rate_pct <-> growth_period
 - revenue_amount <-> revenue_currency
+- pre_money_valuation <-> pre_money_currency
 Pour chaque paire : soit tu renseignes LES DEUX, soit tu mets LES DEUX à null. Ne donne
 jamais le taux/montant seul. Si la période ou la devise n'est pas écrite noir sur blanc,
 déduis-la du contexte du deck (unité, formulation). Si c'est vraiment indéterminable,

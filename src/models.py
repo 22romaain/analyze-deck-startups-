@@ -71,6 +71,15 @@ class DeckSignals(BaseModel):
     founder_ownership_pct: float | None = Field(
         default=None, description="Part du capital détenue par les fondateurs, en pourcentage (ex: 55.0). None si absent."
     )
+    pre_money_valuation: float | None = Field(
+        default=None, description="Valorisation pre-money annoncée pour ce tour, montant brut. None si absente."
+    )
+    pre_money_currency: Literal["EUR", "USD", "GBP"] | None = Field(
+        default=None, description="Devise de la valorisation pre-money : EUR, USD ou GBP. None si absente."
+    )
+    new_option_pool_pct: float | None = Field(
+        default=None, description="Option pool créé au tour, en pourcentage du post-money. None si absent."
+    )
 
     # Marché
     tam_methodology: Literal["top-down", "bottom-up", "both"] | None = Field(
@@ -125,6 +134,7 @@ class DeckSignals(BaseModel):
             ("churn_rate_pct", "churn_period"),
             ("growth_rate_pct", "growth_period"),
             ("revenue_amount", "revenue_currency"),
+            ("pre_money_valuation", "pre_money_currency"),
         ]
         for value_field, unit_field in couples:
             has_value = getattr(self, value_field) is not None

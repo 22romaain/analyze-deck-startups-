@@ -7,12 +7,14 @@ le même score. Analogie : c'est la grille de notation d'un comité d'investisse
 appliquée à la main de la même façon pour chaque dossier.
 """
 
+from src.captable import RoundInput, compute_dilution
 from src.models import (
     DIMENSION_LABELS,
     AnalysisResult,
     DeckSignals,
     DimensionScore,
     RedFlag,
+    parse_amount,
     revenue_in_eur,
 )
 
@@ -322,14 +324,55 @@ def score_dimensions(
     return scores
 
 
-def run_analysis(signals: DeckSignals, round_name: str) -> AnalysisResult:
-    """Point d'entrée du module : signaux + round -> résultat complet.
+def detect_dilution_flag(
+    signals: DeckSignals, round_name: str, ask_amount: str | None
+) -> RedFlag | None:
+    """Alerte si, après ce tour, la détention fondateurs passe sous le seuil du stade (§4.3).
 
-    C'est la seule fonction que l'interface a besoin d'appeler.
+    Exige valo pre-money (donc devise, garantie par le couplage), part fondateurs, et un
+    montant levé parsable. Hypothèse : valo et montant dans la même devise (cas usuel d'un
+    deck) ; seul leur ratio compte pour la dilution, la devise s'annule. Termes incohérents
+    (>100% prélevé) : on n'invente pas d'alerte, on renonce.
+    """
+    threshold = FOUNDER_OWNERSHIP_MIN_BY_ROUND.get(round_name)
+    if threshold is None or signals.pre_money_valuation is None or signals.founder_ownership_pct is None:
+        return None
+    amount = parse_amount(ask_amount) if ask_amount else None
+    if amount is None:
+        return None
+    try:
+        result = compute_dilution(RoundInput(
+            pre_money=signals.pre_money_valuation,
+            amount=amount,
+            founder_pct_pre=signals.founder_ownership_pct,
+            new_option_pool_pct=signals.new_option_pool_pct or 0.0,
+        ))
+    except ValueError:
+        return None
+    if result.founder_pct_post >= threshold:
+        return None
+    return RedFlag(
+        dimension="equipe", severity="MAJEUR",
+        message=(f"Après ce tour, fondateurs à {result.founder_pct_post:.0f}% "
+                 f"(dilution de {result.founder_dilution_points:.0f} pts), "
+                 f"sous le seuil attendu ({threshold:.0f}%) pour un {round_name}."),
+    )
+
+
+def run_analysis(
+    signals: DeckSignals, round_name: str, ask_amount: str | None = None
+) -> AnalysisResult:
+    """Point d'entrée du module : signaux + round (+ montant) -> résultat complet.
+
+    C'est la seule fonction que l'interface a besoin d'appeler. ask_amount est
+    optionnel : sans lui, l'alerte de dilution est simplement absente.
     """
     # Red flags classiques (chiffre vs seuil) + incohérences internes (chiffre vs chiffre).
     red_flags = detect_red_flags(signals, round_name)
     red_flags += detect_incoherences(signals, round_name)
+    dilution_flag = detect_dilution_flag(signals, round_name, ask_amount)
+    if dilution_flag is not None:
+        red_flags.append(dilution_flag)
     dimension_scores = score_dimensions(signals, red_flags, round_name)
 
     # Score global = moyenne pondérée des dimensions par les poids du round.

@@ -53,7 +53,7 @@ def build_and_write_memo(
     (detected_round) ; un round inconnu dégrade proprement (poids vides) sans planter.
     `retriever` (optionnel) : source de doctrine RAG ; None = mémo sans citation.
     """
-    analysis = run_analysis(signals, deck.detected_round)
+    analysis = run_analysis(signals, deck.detected_round, deck.ask_amount)
     memo = build_memo_data(deck, analysis, signals, config, retriever=retriever)
     md_path = write_markdown(memo, output_dir)
     docx_path = render_docx(memo, output_dir)
