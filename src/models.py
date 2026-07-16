@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from src.captable import LiquidationPref
+
 
 class DeckAnalysis(BaseModel):
     """Analyse structurée d'un pitch deck selon les dimensions VC classiques."""
@@ -79,6 +81,10 @@ class DeckSignals(BaseModel):
     )
     new_option_pool_pct: float | None = Field(
         default=None, description="Option pool créé au tour, en pourcentage du post-money. None si absent."
+    )
+    liquidation_prefs: list[LiquidationPref] = Field(
+        default_factory=list,
+        description="Tranches de liquidation preferences connues. Souvent absentes d'un pitch deck (term sheet)."
     )
 
     # Marché

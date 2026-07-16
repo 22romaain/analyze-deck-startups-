@@ -7,7 +7,7 @@ le même score. Analogie : c'est la grille de notation d'un comité d'investisse
 appliquée à la main de la même façon pour chaque dossier.
 """
 
-from src.captable import RoundInput, compute_dilution
+from src.captable import LiquidationPref, RoundInput, compute_dilution, compute_waterfall
 from src.models import (
     DIMENSION_LABELS,
     AnalysisResult,
@@ -359,6 +359,32 @@ def detect_dilution_flag(
     )
 
 
+# Sous ce plancher de part de sortie, les fondateurs "ne touchent presque rien" (§4.3).
+WATERFALL_FOUNDERS_FLOOR_PCT = 10.0
+
+
+def detect_waterfall_flag(
+    prefs: list[LiquidationPref], founder_pct: float, post_money: float
+) -> RedFlag | None:
+    """Alerte CRITIQUE si, à la sortie de référence, le stack de préférences écrase les
+    fondateurs (§4.3).
+
+    Scénario médian retenu : vente au post-money (sortie honorable). Si même là les
+    ordinaires passent sous le plancher, les liquidation preferences sont le problème.
+    """
+    if not prefs or post_money <= 0 or founder_pct <= 0:
+        return None
+    result = compute_waterfall(post_money, prefs, founder_pct)
+    if result.founders_pct_of_exit >= WATERFALL_FOUNDERS_FLOOR_PCT:
+        return None
+    return RedFlag(
+        dimension="equipe", severity="CRITIQUE",
+        message=(f"Waterfall : à une sortie au post-money (~{post_money / 1e6:.0f}M), les "
+                 f"fondateurs ne touchent que {result.founders_pct_of_exit:.0f}% "
+                 f"(~{result.founders_payout / 1e6:.1f}M), écrasés par les liquidation preferences."),
+    )
+
+
 def run_analysis(
     signals: DeckSignals, round_name: str, ask_amount: str | None = None
 ) -> AnalysisResult:
@@ -373,6 +399,18 @@ def run_analysis(
     dilution_flag = detect_dilution_flag(signals, round_name, ask_amount)
     if dilution_flag is not None:
         red_flags.append(dilution_flag)
+
+    # Waterfall : n'a de sens que si des préférences sont connues (rare hors term sheet).
+    # Sortie de référence = post-money ; on approxime la part fondateurs à l'exit par leur
+    # détention actuelle (raffinable avec la dilution du tour plus tard).
+    amount = parse_amount(ask_amount) if ask_amount else None
+    if signals.liquidation_prefs and signals.pre_money_valuation is not None \
+            and signals.founder_ownership_pct is not None and amount is not None:
+        post_money = signals.pre_money_valuation + amount
+        waterfall_flag = detect_waterfall_flag(
+            signals.liquidation_prefs, signals.founder_ownership_pct, post_money)
+        if waterfall_flag is not None:
+            red_flags.append(waterfall_flag)
     dimension_scores = score_dimensions(signals, red_flags, round_name)
 
     # Score global = moyenne pondérée des dimensions par les poids du round.
