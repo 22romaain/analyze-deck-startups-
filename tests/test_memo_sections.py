@@ -35,6 +35,15 @@ def test_dashboard_statuts_par_metrique():
     assert rows["Croissance"].statut == "ABSENT"  # growth absent (couple invalidé)
 
 
+def test_dashboard_founder_ownership_benchmarke():
+    # Nouveau benchmark : detention fondateurs (plus haut = mieux). 80% en seed = dans la norme.
+    rows = {r.metrique: r for r in build_dashboard(DeckSignals(founder_ownership_pct=80.0), "seed", CONFIG)}
+    assert rows["Cap table (part fondateurs)"].statut == "DANS_LA_NORME"
+    # Sous le seuil doctrine (75%) -> sous la barre.
+    rows_low = {r.metrique: r for r in build_dashboard(DeckSignals(founder_ownership_pct=60.0), "seed", CONFIG)}
+    assert rows_low["Cap table (part fondateurs)"].statut == "SOUS_LA_BARRE"
+
+
 def test_dashboard_churn_annuel_non_comparable():
     # Le benchmark churn est mensuel : un churn annuel ne se compare pas.
     signals = DeckSignals(churn_rate_pct=8.0, churn_period="annual")
