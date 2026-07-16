@@ -26,3 +26,19 @@ def test_read_documents_ignore_readme_et_non_supporte(tmp_path):
     docs = read_documents(tmp_path)
     names = {name for name, _ in docs}
     assert names == {"cours1.md", "notes.txt"}
+
+
+def test_read_documents_lit_docx_avec_titres(tmp_path):
+    # Un .docx est lu, et ses titres Word deviennent des sections comme en Markdown.
+    from docx import Document
+
+    doc = Document()
+    doc.add_heading("Dimensionner le marche", level=1)
+    doc.add_paragraph("Exiger un TAM bottom-up plutot qu un pourcentage.")
+    doc.save(tmp_path / "cours.docx")
+
+    texte = dict(read_documents(tmp_path))["cours.docx"]
+    assert "# Dimensionner le marche" in texte  # titre -> ligne Markdown
+    chunks = chunk_text(texte, "cours.docx")
+    assert chunks[0].section == "Dimensionner le marche"
+    assert "bottom-up" in chunks[0].text

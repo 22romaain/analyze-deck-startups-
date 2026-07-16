@@ -8,6 +8,7 @@ Analogie : préparer la data room en fiches thématiques avant de l'indexer.
 from pathlib import Path
 
 import fitz  # PyMuPDF, déjà utilisé par l'ingestion
+from docx import Document  # python-docx, déjà utilisé pour le journal
 from pydantic import BaseModel
 
 # Taille cible d'un passage, en caractères. Assez court pour être précis à la
@@ -15,7 +16,7 @@ from pydantic import BaseModel
 CHUNK_MAX_CHARS = 800
 
 # Extensions de cours supportées. Le README du dossier n'est jamais indexé.
-SUPPORTED_SUFFIXES = {".md", ".txt", ".pdf"}
+SUPPORTED_SUFFIXES = {".md", ".txt", ".pdf", ".docx"}
 
 
 class Chunk(BaseModel):
@@ -34,10 +35,28 @@ def _read_pdf(path: Path) -> str:
     return text
 
 
+def _read_docx(path: Path) -> str:
+    """Extrait le texte d'un .docx en Markdown léger : les titres (styles 'Heading')
+    deviennent des lignes '#', pour que le découpage par section marche comme pour
+    un .md. Limite connue : le texte des tableaux n'est pas capturé (paragraphes seuls).
+    """
+    document = Document(str(path))
+    lines: list[str] = []
+    for para in document.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+        style = para.style.name if para.style else ""
+        lines.append(f"# {text}" if style.startswith("Heading") else text)
+    return "\n".join(lines)
+
+
 def _read_file(path: Path) -> str:
     """Lit un fichier de cours en texte, selon son extension."""
     if path.suffix.lower() == ".pdf":
         return _read_pdf(path)
+    if path.suffix.lower() == ".docx":
+        return _read_docx(path)
     return path.read_text(encoding="utf-8")
 
 
