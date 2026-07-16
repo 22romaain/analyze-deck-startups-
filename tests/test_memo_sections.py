@@ -75,6 +75,32 @@ def test_dimensions_red_flags_inline_groupes():
     assert len(inline) == 1 and inline[0].severity == "CRITIQUE"
 
 
+def test_cite_doctrine_filtre_les_matchs_trop_lointains():
+    from src.output.memo_data import cite_doctrine
+    from src.rag.index import SearchHit
+
+    def fake_retriever(query, k):
+        return [
+            SearchHit(text="Pertinent.", source="c.md", section="A", distance=0.9),   # gardé
+            SearchHit(text="Hors sujet.", source="c.md", section="B", distance=1.5),  # filtré
+        ]
+
+    cites = cite_doctrine("marché", retriever=fake_retriever)
+    assert len(cites) == 1 and cites[0].section == "A"
+
+
+def test_cite_doctrine_seuil_ajustable():
+    from src.output.memo_data import cite_doctrine
+    from src.rag.index import SearchHit
+
+    def fake_retriever(query, k):
+        return [SearchHit(text="Loin.", source="c.md", section="B", distance=1.5)]
+
+    # Seuil large : le passage lointain passe. Seuil par défaut : il est filtré.
+    assert len(cite_doctrine("m", retriever=fake_retriever, max_distance=2.0)) == 1
+    assert cite_doctrine("m", retriever=fake_retriever) == []
+
+
 def test_dimensions_doctrine_citee_pour_une_seule_dimension():
     # Faux retriever déterministe : la couche mémo se teste sans ChromaDB ni réseau.
     from src.rag.index import SearchHit

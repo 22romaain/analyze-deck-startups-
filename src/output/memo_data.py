@@ -514,14 +514,23 @@ def build_dashboard(
 # Longueur max d'un extrait cité : le mémo cite une source, il ne recopie pas un cours.
 DOCTRINE_EXTRACT_CHARS = 300
 
+# Au-delà de cette distance, un passage est jugé trop peu pertinent pour être cité.
+# Calibré sur le corpus actuel (embeddings MiniLM) : bons matchs < ~1.0, hors-sujet
+# vers 1.3+. Mieux vaut pas de citation qu'une mauvaise. Réglable si le corpus change.
+DOCTRINE_MAX_DISTANCE = 1.2
 
-def cite_doctrine(query: str, k: int = 2, retriever=None) -> list[DoctrineCitation]:
-    """Récupère jusqu'à k extraits de doctrine pour une requête donnée.
 
-    retriever injectable (défaut = search RAG réel) : la couche mémo reste testable
-    hors ligne en passant un faux retriever, sans charger ChromaDB. L'import est
+def cite_doctrine(
+    query: str, k: int = 2, retriever=None, max_distance: float | None = None
+) -> list[DoctrineCitation]:
+    """Récupère jusqu'à k extraits de doctrine pour une requête, filtrés par pertinence.
+
+    Seuls les passages dont la distance est <= max_distance (défaut DOCTRINE_MAX_DISTANCE)
+    sont cités ; les autres sont trop hors-sujet. retriever injectable (défaut = search RAG
+    réel) : la couche mémo reste testable hors ligne, sans charger ChromaDB. L'import est
     différé dans la branche par défaut pour ne pas coupler ce module à chromadb.
     """
+    ceiling = DOCTRINE_MAX_DISTANCE if max_distance is None else max_distance
     if retriever is None:
         from src.rag.index import search as retriever
     hits = retriever(query, k)
@@ -533,6 +542,7 @@ def cite_doctrine(query: str, k: int = 2, retriever=None) -> list[DoctrineCitati
             distance=hit.distance,
         )
         for hit in hits
+        if hit.distance <= ceiling
     ]
 
 
