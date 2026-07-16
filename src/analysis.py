@@ -57,6 +57,16 @@ SEVERITY_PENALTY: dict[str, float] = {
 BASELINE_SCORE: float = 60.0
 
 
+# Rounds où une cap table est exigible : son absence devient un signal (§4.3).
+SERIES_A_PLUS_ROUNDS = {"serie-a", "serie-b", "serie-c", "growth"}
+
+# Détention fondateurs minimale attendue par round (référentiel §4.3, ordre de grandeur).
+# Le seuil se resserre à mesure que le tour avance. Pas de seuil en pre-seed.
+FOUNDER_OWNERSHIP_MIN_BY_ROUND = {
+    "seed": 75.0, "serie-a": 50.0, "serie-b": 40.0, "serie-c": 40.0, "growth": 40.0,
+}
+
+
 def detect_red_flags(signals: DeckSignals, round_name: str) -> list[RedFlag]:
     """Applique les règles du référentiel aux signaux et retourne les alertes.
 
@@ -73,15 +83,20 @@ def detect_red_flags(signals: DeckSignals, round_name: str) -> list[RedFlag]:
             message="Produit au coeur technique mais aucun fondateur au profil technique.",
         ))
 
+    # Détention fondateurs et cap table (référentiel §4.3).
     if signals.founder_ownership_pct is not None:
-        # Le seuil de dilution acceptable se resserre à mesure que le round avance.
-        dilution_thresholds = {"seed": 60.0, "serie-a": 50.0, "serie-b": 40.0, "serie-c": 40.0, "growth": 40.0}
-        threshold = dilution_thresholds.get(round_name)
+        threshold = FOUNDER_OWNERSHIP_MIN_BY_ROUND.get(round_name)
         if threshold is not None and signals.founder_ownership_pct < threshold:
             flags.append(RedFlag(
                 dimension="equipe", severity="MAJEUR",
                 message=f"Fondateurs à {signals.founder_ownership_pct:.0f}% du capital, sous le seuil attendu ({threshold:.0f}%) pour un {round_name}.",
             ))
+    elif round_name in SERIES_A_PLUS_ROUNDS:
+        # Cap table exigible mais absente : c'est un signal, pas un neutre (§1.1 et §4.3).
+        flags.append(RedFlag(
+            dimension="equipe", severity="MAJEUR",
+            message=f"Cap table non fournie ou incomplète pour un {round_name} (détention fondateurs absente du deck).",
+        ))
 
     # --- Marché ---
     if signals.tam_methodology == "top-down":

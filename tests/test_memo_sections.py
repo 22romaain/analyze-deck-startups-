@@ -65,7 +65,10 @@ def test_dimensions_ordre_poids_decroissant():
 
 def test_dimensions_red_flags_inline_groupes():
     # Produit tech sans fondateur technique -> red flag CRITIQUE sur equipe.
-    signals = DeckSignals(product_is_tech=True, has_technical_founder=False)
+    # Détention fondateurs fournie (70% > seuil série A) pour isoler ce seul flag :
+    # sans elle, la règle cap table §4.3 ajouterait un flag d'absence sur equipe.
+    signals = DeckSignals(product_is_tech=True, has_technical_founder=False,
+                          founder_ownership_pct=70.0)
     analysis = run_analysis(signals, "serie-a")
     dims = {d.dimension: d for d in build_dimensions(analysis, CONFIG)}
     inline = dims["equipe"].red_flags_inline
