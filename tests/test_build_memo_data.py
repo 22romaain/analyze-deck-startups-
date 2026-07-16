@@ -44,6 +44,20 @@ def test_build_memo_data_assemblage_complet():
     assert "## Annexes" in md
 
 
+def test_societe_vient_du_nom_extrait_sinon_fallback():
+    signals = DeckSignals()
+    analysis = run_analysis(signals, "serie-a")
+    # Nom extrait present -> utilisé dans le mémo.
+    deck = make_deck()
+    deck.company_name = "Acme SAS"
+    memo = build_memo_data(deck, analysis, signals, CONFIG)
+    assert memo.societe == "Acme SAS"
+    # Nom absent -> fallback config.
+    deck.company_name = None
+    memo_fallback = build_memo_data(deck, analysis, signals, CONFIG)
+    assert memo_fallback.societe == CONFIG.societe_fallback
+
+
 def test_build_and_write_memo_transmet_le_retriever(tmp_path):
     # Câblage réel testé hors ligne : un faux retriever suffit à prouver le passthrough
     # CLI -> build_memo_data -> build_dimensions -> rendu, sans ChromaDB.

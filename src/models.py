@@ -17,6 +17,9 @@ from src.captable import LiquidationPref
 class DeckAnalysis(BaseModel):
     """Analyse structurée d'un pitch deck selon les dimensions VC classiques."""
 
+    company_name: str | None = Field(
+        default=None, description="Nom de la société tel qu'écrit dans le deck. None si introuvable."
+    )
     equipe: str = Field(
         description="Équipe fondatrice et founder-market fit : qui sont-ils, parcours, complémentarité"
     )

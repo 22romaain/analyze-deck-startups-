@@ -779,7 +779,7 @@ def build_memo_data(
     red_flag_rows = build_red_flag_rows(analysis.red_flags)
     review_block = build_review_block(review)
     return MemoData(
-        societe=societe or config.societe_fallback,
+        societe=societe or deck.company_name or config.societe_fallback,
         round=analysis.round,
         ask_amount=deck.ask_amount,
         date=day,

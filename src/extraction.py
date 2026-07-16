@@ -36,7 +36,8 @@ Dimensions à analyser :
 - financials : projections, hypothèses clés, runway, chemin vers rentabilité
 - ask : montant recherché, valorisation, use of funds, prochaines étapes
 
-En plus des 10 dimensions, ajoute ces 2 champs :
+En plus des 10 dimensions, ajoute ces 3 champs :
+- company_name : le nom de la société tel qu'écrit dans le deck. null si introuvable.
 - detected_round : le round de financement que ce deck cible, parmi : pre-seed, seed, serie-a, serie-b, serie-c, growth. Déduis-le du montant demandé, du stade de maturité et du vocabulaire utilisé.
 - ask_amount : le montant recherché extrait du deck, en chiffres avec devise (ex: "2M EUR", "500k USD"). Si absent, écris "non mentionné".
 
@@ -75,7 +76,7 @@ jamais le taux/montant seul. Si la période ou la devise n'est pas écrite noir 
 déduis-la du contexte du deck (unité, formulation). Si c'est vraiment indéterminable,
 mets les deux à null.
 
-Réponds UNIQUEMENT avec un objet JSON valide : les 12 clés de dimensions/round au
+Réponds UNIQUEMENT avec un objet JSON valide : les 13 clés de société/dimensions/round au
 premier niveau, plus la clé "signals". Pas de markdown, pas de commentaires, juste le JSON."""
 
 # Modèles Mistral
