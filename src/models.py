@@ -89,6 +89,10 @@ class DeckSignals(BaseModel):
         default_factory=list,
         description="Tranches de liquidation preferences connues. Souvent absentes d'un pitch deck (term sheet)."
     )
+    slide_sources: dict[str, int] = Field(
+        default_factory=dict,
+        description="Traçabilité : pour chaque signal renseigné, le numéro de slide d'où il vient (au mieux)."
+    )
 
     # Marché
     tam_methodology: Literal["top-down", "bottom-up", "both"] | None = Field(

@@ -74,14 +74,15 @@ def _render_dashboard(memo: MemoData) -> list[str]:
     lines = [
         "## Tableau de bord",
         "",
-        "| Métrique | Valeur | Statut | Benchmark |",
-        "| --- | --- | --- | --- |",
+        "| Métrique | Valeur | Statut | Benchmark | Source |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for row in memo.dashboard:
         valeur = row.valeur if row.valeur is not None else VIDE
         benchmark = row.benchmark if row.benchmark is not None else VIDE
         statut = STATUT_LABELS[row.statut]
-        lines.append(f"| {row.metrique} | {valeur} | {statut} | {benchmark} |")
+        source = f"slide {row.slide}" if row.slide is not None else VIDE
+        lines.append(f"| {row.metrique} | {valeur} | {statut} | {benchmark} | {source} |")
     return lines
 
 

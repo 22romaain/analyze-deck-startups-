@@ -35,6 +35,15 @@ def test_dashboard_statuts_par_metrique():
     assert rows["Croissance"].statut == "ABSENT"  # growth absent (couple invalidé)
 
 
+def test_dashboard_affiche_la_slide_source():
+    # La slide source d'un signal (si connue) remonte dans la ligne du tableau de bord.
+    signals = DeckSignals(revenue_amount=200000.0, revenue_currency="EUR",
+                          slide_sources={"revenue_amount": 7})
+    rows = {r.metrique: r for r in build_dashboard(signals, "serie-a", CONFIG)}
+    assert rows["ARR"].slide == 7
+    assert rows["Croissance"].slide is None  # signal absent -> pas de source
+
+
 def test_dashboard_founder_ownership_benchmarke():
     # Nouveau benchmark : detention fondateurs (plus haut = mieux). 80% en seed = dans la norme.
     rows = {r.metrique: r for r in build_dashboard(DeckSignals(founder_ownership_pct=80.0), "seed", CONFIG)}

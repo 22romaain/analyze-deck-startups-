@@ -28,12 +28,12 @@ Le moteur de croissance est-il identifié et répétable, ou la traction est-ell
 
 ## Tableau de bord
 
-| Métrique | Valeur | Statut | Benchmark |
-| --- | --- | --- | --- |
-| ARR | 200 000 EUR | Dans la norme | 2,5-3,5M USD |
-| Churn | 2%/mois | Top quartile | < 2%/mois |
-| Burn multiple | — | Absent | ~1,2x |
-| NRR | 105% | Non évaluable | — |
+| Métrique | Valeur | Statut | Benchmark | Source |
+| --- | --- | --- | --- | --- |
+| ARR | 200 000 EUR | Dans la norme | 2,5-3,5M USD | slide 5 |
+| Churn | 2%/mois | Top quartile | < 2%/mois | — |
+| Burn multiple | — | Absent | ~1,2x | — |
+| NRR | 105% | Non évaluable | — | — |
 
 ## Analyse par dimension
 

@@ -52,6 +52,7 @@ Clés de "signals" :
 - pre_money_currency : "EUR" | "USD" | "GBP" | null. Devise de la valorisation ci-dessus.
 - new_option_pool_pct : nombre ou null. Option pool créé au tour, en % du post-money.
 - liquidation_prefs : liste d'objets ou []. Chaque préférence connue : {"name", "invested" (montant), "multiple" (ex: 1.0), "participating" (true/false), "as_converted_pct", "seniority" (entier)}. Presque toujours absent d'un pitch deck : mets [] si non mentionné.
+- slide_sources : objet ou {}. Pour chaque signal chiffré que tu renseignes, indique le numéro de slide (1 = première slide) d'où vient l'information, ex: {"revenue_amount": 7, "runway_months": 12}. Omets les signaux non renseignés. Ne devine pas un numéro : si tu n'es pas sûr, ne mets pas la clé.
 - tam_methodology : "top-down" | "bottom-up" | "both" | null. Méthode de calcul du TAM.
 - has_why_now : true/false/null. Le deck justifie explicitement le 'why now'.
 - revenue_amount : nombre ou null. Revenu ou ARR annuel, montant brut tel qu'écrit (ne convertis pas).

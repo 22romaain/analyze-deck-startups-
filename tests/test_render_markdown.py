@@ -61,7 +61,7 @@ def make_memo() -> MemoData:
             bonne_reponse="", mauvaise_reponse="", origine="dimension_faible",
         ),
         dashboard=[
-            DashboardRow(metrique="ARR", valeur="200 000 EUR", statut="DANS_LA_NORME", benchmark="2,5-3,5M USD"),
+            DashboardRow(metrique="ARR", valeur="200 000 EUR", statut="DANS_LA_NORME", benchmark="2,5-3,5M USD", slide=5),
             DashboardRow(metrique="Churn", valeur="2%/mois", statut="TOP_QUARTILE", benchmark="< 2%/mois"),
             DashboardRow(metrique="Burn multiple", valeur=None, statut="ABSENT", benchmark="~1,2x"),
             DashboardRow(metrique="NRR", valeur="105%", statut="NON_EVALUABLE", benchmark=None),

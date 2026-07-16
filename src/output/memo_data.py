@@ -512,6 +512,7 @@ def build_dashboard(
             valeur=_format_signal_value(attendu.signal, signals),
             statut=_dashboard_status(attendu.signal, signals, config, round_name),
             benchmark=benchmark_str,
+            slide=signals.slide_sources.get(attendu.signal),
         ))
     return rows
 
@@ -742,7 +743,7 @@ def build_annexes(deck: DeckAnalysis, config: MemoConfig, review_disponible: boo
         f"les poids du round. Référentiel : {config.version_referentiel}."
     )
     limites = [
-        "Traçabilité slide reportée : les valeurs n'affichent pas encore leur slide source.",
+        "Traçabilité slide partielle : le tableau de bord affiche la slide source (au mieux) ; les dimensions narratives ne sont pas encore tracées.",
         "Benchmarks partiels : une métrique sans repère encodé est non évaluable.",
         "Réponses type des questions à rédiger par un analyste, jamais générées.",
     ]
