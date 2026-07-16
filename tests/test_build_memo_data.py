@@ -44,6 +44,22 @@ def test_build_memo_data_assemblage_complet():
     assert "## Annexes" in md
 
 
+def test_build_and_write_memo_transmet_le_retriever(tmp_path):
+    # Câblage réel testé hors ligne : un faux retriever suffit à prouver le passthrough
+    # CLI -> build_memo_data -> build_dimensions -> rendu, sans ChromaDB.
+    from src.rag.index import SearchHit
+
+    def fake_retriever(query, k):
+        return [SearchHit(text="Doctrine de reference. " * 20, source="cours.md",
+                          section="S1", distance=0.2)]
+
+    memo, md_path, _ = build_and_write_memo(
+        make_deck(), DeckSignals(), CONFIG, output_dir=tmp_path, retriever=fake_retriever)
+    # Sans doctrine_dimensions, toutes les dimensions du round sont citées.
+    assert all(d.doctrine for d in memo.dimensions)
+    assert "Doctrine VC :" in md_path.read_text(encoding="utf-8")
+
+
 def test_build_memo_data_avec_contre_analyse():
     signals = DeckSignals()
     analysis = run_analysis(signals, "serie-a")

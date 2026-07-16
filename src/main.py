@@ -16,19 +16,45 @@ from src.output.render_docx import render_docx
 from src.output.render_markdown import write_markdown
 
 
+def _load_doctrine_retriever() -> tuple[object | None, str]:
+    """Prépare la source de doctrine RAG pour le mémo, de façon tolérante.
+
+    Renvoie (retriever, message). retriever vaut None si l'index est absent ou vide :
+    le mémo se génère alors sans citation. L'appel externe (RAG) est protégé, une
+    erreur désactive la doctrine au lieu de faire échouer le pipeline.
+    """
+    try:
+        from src.rag.index import search
+        probe = search("marché", k=1)  # sonde : l'index répond-il et contient-il des passages ?
+    except Exception as exc:  # index illisible, dépendance manquante, etc.
+        return None, f"Doctrine RAG desactivee (index indisponible : {exc})."
+    if not probe:
+        return None, "Doctrine RAG desactivee (index vide : lancer build_index sur courses/)."
+
+    def retrieve(query: str, k: int):
+        try:
+            return search(query, k)
+        except Exception:
+            return []  # une requête ratée ne prive pas le mémo des autres citations
+
+    return retrieve, "Doctrine RAG activee (citations des cours en appui des dimensions)."
+
+
 def build_and_write_memo(
     deck: DeckAnalysis,
     signals: DeckSignals,
     config: MemoConfig,
     output_dir: Path | None = None,
+    retriever: object | None = None,
 ) -> tuple[MemoData, Path, Path]:
     """Partie déterministe du pipeline : scoring -> mémo -> écriture des 2 fichiers.
 
     Aucun appel LLM ici, donc testable de bout en bout. Le round vient du deck
     (detected_round) ; un round inconnu dégrade proprement (poids vides) sans planter.
+    `retriever` (optionnel) : source de doctrine RAG ; None = mémo sans citation.
     """
     analysis = run_analysis(signals, deck.detected_round)
-    memo = build_memo_data(deck, analysis, signals, config)
+    memo = build_memo_data(deck, analysis, signals, config, retriever=retriever)
     md_path = write_markdown(memo, output_dir)
     docx_path = render_docx(memo, output_dir)
     return memo, md_path, docx_path
@@ -63,8 +89,11 @@ def main() -> None:
         print(f"Extraction impossible : {exc}")
         sys.exit(1)
 
+    retriever, doctrine_msg = _load_doctrine_retriever()
+    print(doctrine_msg)
+
     try:
-        memo, md_path, docx_path = build_and_write_memo(deck, signals, config)
+        memo, md_path, docx_path = build_and_write_memo(deck, signals, config, retriever=retriever)
     except RuntimeError as exc:
         print(f"Écriture du mémo impossible : {exc}")
         sys.exit(1)

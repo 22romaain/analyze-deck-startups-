@@ -558,9 +558,9 @@ def build_dimensions(
 ) -> list[DimensionSection]:
     """Sections par dimension du round, triées par poids décroissant (départage alpha).
 
-    retriever + doctrine_dimensions optionnels : quand fournis, on cite la doctrine
-    (requête = label de la dimension) pour les seules dimensions listées. Par défaut,
-    aucun appel RAG : la section se construit hors ligne, comportement inchangé."""
+    retriever optionnel (défaut None = aucun appel RAG, section construite hors ligne).
+    Quand un retriever est fourni : doctrine_dimensions None -> on cite toutes les
+    dimensions du round ; un ensemble -> on restreint à ces dimensions. Requête = label."""
     weights = ROUND_WEIGHTS.get(analysis.round, {})
     by_dim = {d.dimension: d for d in analysis.dimension_scores}
     flags_by_dim: dict[str, list[RedFlag]] = {}
@@ -573,11 +573,10 @@ def build_dimensions(
         d = by_dim.get(dim)
         if d is None:
             continue
-        cite = (
-            cite_doctrine(d.label, retriever=retriever)
-            if retriever is not None and doctrine_dimensions and dim in doctrine_dimensions
-            else []
+        want_doctrine = retriever is not None and (
+            doctrine_dimensions is None or dim in doctrine_dimensions
         )
+        cite = cite_doctrine(d.label, retriever=retriever) if want_doctrine else []
         sections.append(DimensionSection(
             dimension=dim, label=d.label, score=d.score, weight=d.weight,
             grade=_grade_for(d.score, config), regle_appliquee=d.rationale,
@@ -729,6 +728,8 @@ def build_memo_data(
     review: str | None = None,
     today: date | None = None,
     societe: str | None = None,
+    retriever=None,
+    doctrine_dimensions: set[str] | None = None,
 ) -> MemoData:
     """Assemble l'agrégat complet du mémo à partir des trois couches amont.
 
@@ -736,6 +737,8 @@ def build_memo_data(
     laisse Pydantic vérifier que toutes les sections requises sont présentes.
     `review` = contenu texte de la contre-analyse (None tant que la brique n'existe
     pas). `societe` : nom extrait plus tard ; à défaut, fallback config.
+    `retriever` : source de doctrine RAG passée à build_dimensions (None = pas de
+    citation, mémo construit hors ligne).
     """
     day = today or date.today()
     red_flag_rows = build_red_flag_rows(analysis.red_flags)
@@ -750,7 +753,7 @@ def build_memo_data(
         faiblesses=select_faiblesses(analysis.dimension_scores, analysis.red_flags),
         question_decisive=select_question_decisive(analysis, signals, config),
         dashboard=build_dashboard(signals, analysis.round, config),
-        dimensions=build_dimensions(analysis, config),
+        dimensions=build_dimensions(analysis, config, retriever, doctrine_dimensions),
         red_flags=red_flag_rows,
         incoherences=filter_incoherences(red_flag_rows),
         donnees_manquantes=build_missing_data(signals, analysis.round, config),
