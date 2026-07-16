@@ -99,6 +99,11 @@ def _render_dimensions(memo: MemoData) -> list[str]:
         if d.red_flags_inline:
             lines += ["", "Red flags :"]
             lines += [f"- [{r.severity}] {r.message}" for r in d.red_flags_inline]
+        # Doctrine issue des cours perso (RAG) : ne s'affiche que si une citation existe,
+        # donc un mémo sans doctrine reste rendu à l'identique (golden inchangé).
+        if d.doctrine:
+            lines += ["", "Doctrine VC :"]
+            lines += [f"- ({c.source}, §{c.section}) {c.extrait}" for c in d.doctrine]
     return lines
 
 

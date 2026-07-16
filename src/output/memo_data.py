@@ -217,8 +217,22 @@ class RedFlagRow(BaseModel):
     est_incoherence: bool
 
 
+class DoctrineCitation(BaseModel):
+    """Un extrait de doctrine VC (tes cours perso) cité en appui d'une dimension.
+
+    On ne garde qu'un extrait court : le mémo pointe vers la source, il ne recopie
+    pas le cours entier. distance = proximité à la requête (plus petit = plus proche)."""
+    source: str
+    section: str
+    extrait: str
+    distance: float
+
+
 class DimensionSection(BaseModel):
-    """Le bloc d'analyse d'une dimension : score, poids, grade, règles, red flags liés."""
+    """Le bloc d'analyse d'une dimension : score, poids, grade, règles, red flags liés.
+
+    doctrine reste vide par défaut : la citation RAG est optionnelle, la couche mémo
+    se construit sans réseau tant qu'on ne l'alimente pas."""
     dimension: str
     label: str
     score: float
@@ -226,6 +240,7 @@ class DimensionSection(BaseModel):
     grade: str
     regle_appliquee: list[str]  # = DimensionScore.rationale
     red_flags_inline: list[RedFlagRow]
+    doctrine: list[DoctrineCitation] = Field(default_factory=list)
 
 
 class MissingData(BaseModel):
@@ -494,6 +509,33 @@ def build_dashboard(
     return rows
 
 
+# --- Pont vers la doctrine RAG (citation des cours en appui d'une dimension) ---
+
+# Longueur max d'un extrait cité : le mémo cite une source, il ne recopie pas un cours.
+DOCTRINE_EXTRACT_CHARS = 300
+
+
+def cite_doctrine(query: str, k: int = 2, retriever=None) -> list[DoctrineCitation]:
+    """Récupère jusqu'à k extraits de doctrine pour une requête donnée.
+
+    retriever injectable (défaut = search RAG réel) : la couche mémo reste testable
+    hors ligne en passant un faux retriever, sans charger ChromaDB. L'import est
+    différé dans la branche par défaut pour ne pas coupler ce module à chromadb.
+    """
+    if retriever is None:
+        from src.rag.index import search as retriever
+    hits = retriever(query, k)
+    return [
+        DoctrineCitation(
+            source=hit.source,
+            section=hit.section,
+            extrait=hit.text[:DOCTRINE_EXTRACT_CHARS].rstrip(),
+            distance=hit.distance,
+        )
+        for hit in hits
+    ]
+
+
 # --- Analyse par dimension, red flags, données manquantes (sections 3-4-5) ---
 
 def _to_red_flag_row(flag: RedFlag) -> RedFlagRow:
@@ -508,8 +550,17 @@ def _to_red_flag_row(flag: RedFlag) -> RedFlagRow:
     )
 
 
-def build_dimensions(analysis: AnalysisResult, config: MemoConfig) -> list[DimensionSection]:
-    """Sections par dimension du round, triées par poids décroissant (départage alpha)."""
+def build_dimensions(
+    analysis: AnalysisResult,
+    config: MemoConfig,
+    retriever=None,
+    doctrine_dimensions: set[str] | None = None,
+) -> list[DimensionSection]:
+    """Sections par dimension du round, triées par poids décroissant (départage alpha).
+
+    retriever + doctrine_dimensions optionnels : quand fournis, on cite la doctrine
+    (requête = label de la dimension) pour les seules dimensions listées. Par défaut,
+    aucun appel RAG : la section se construit hors ligne, comportement inchangé."""
     weights = ROUND_WEIGHTS.get(analysis.round, {})
     by_dim = {d.dimension: d for d in analysis.dimension_scores}
     flags_by_dim: dict[str, list[RedFlag]] = {}
@@ -522,10 +573,16 @@ def build_dimensions(analysis: AnalysisResult, config: MemoConfig) -> list[Dimen
         d = by_dim.get(dim)
         if d is None:
             continue
+        cite = (
+            cite_doctrine(d.label, retriever=retriever)
+            if retriever is not None and doctrine_dimensions and dim in doctrine_dimensions
+            else []
+        )
         sections.append(DimensionSection(
             dimension=dim, label=d.label, score=d.score, weight=d.weight,
             grade=_grade_for(d.score, config), regle_appliquee=d.rationale,
             red_flags_inline=[_to_red_flag_row(f) for f in flags_by_dim.get(dim, [])],
+            doctrine=cite,
         ))
     return sections
 

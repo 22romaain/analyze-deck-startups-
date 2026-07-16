@@ -132,4 +132,26 @@ def test_render_degradation_contre_analyse():
     # Sans contre-analyse : l'encart dégradé apparaît, aucune trace du bandeau "disponible".
     md = render_markdown(make_memo())
     assert "Contre-analyse indisponible (erreur API)." in md
+
+
+def test_render_markdown_affiche_doctrine():
+    # Une dimension portant une citation la voit rendue sous un bloc "Doctrine VC".
+    from src.output.memo_data import DoctrineCitation
+
+    memo = make_memo()
+    memo.dimensions[0].doctrine = [DoctrineCitation(
+        source="cours_marche.md", section="Dimensionner un TAM",
+        extrait="Exiger un TAM bottom-up plutot qu'un pourcentage d'un marche geant.",
+        distance=0.12,
+    )]
+    md = render_markdown(memo)
+    assert "Doctrine VC :" in md
+    assert "(cours_marche.md, §Dimensionner un TAM)" in md
+    assert "bottom-up" in md
+
+
+def test_render_markdown_sans_doctrine_inchange():
+    # Sans citation, aucun bloc doctrine : garantit que le mémo par défaut ne régresse pas.
+    md = render_markdown(make_memo())
+    assert "Doctrine VC :" not in md
     assert "Critique générée par LLM" not in md

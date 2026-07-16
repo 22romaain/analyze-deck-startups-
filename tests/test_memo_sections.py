@@ -72,6 +72,24 @@ def test_dimensions_red_flags_inline_groupes():
     assert len(inline) == 1 and inline[0].severity == "CRITIQUE"
 
 
+def test_dimensions_doctrine_citee_pour_une_seule_dimension():
+    # Faux retriever déterministe : la couche mémo se teste sans ChromaDB ni réseau.
+    from src.rag.index import SearchHit
+
+    def fake_retriever(query, k):
+        return [SearchHit(text="Exiger un TAM bottom-up. " * 40,  # long -> sera tronqué
+                          source="cours_marche.md", section="TAM", distance=0.12)]
+
+    analysis = run_analysis(DeckSignals(), "serie-a")
+    dims = {d.dimension: d for d in build_dimensions(
+        analysis, CONFIG, retriever=fake_retriever, doctrine_dimensions={"marche"})}
+    # Seule 'marche' est enrichie ; les autres dimensions restent sans doctrine.
+    assert len(dims["marche"].doctrine) == 1
+    assert dims["marche"].doctrine[0].source == "cours_marche.md"
+    assert len(dims["marche"].doctrine[0].extrait) <= 300  # extrait borné
+    assert dims["traction"].doctrine == []
+
+
 # --- Red flags (section 4) ---
 
 def test_red_flag_rows_tri_severite_et_incoherence():
