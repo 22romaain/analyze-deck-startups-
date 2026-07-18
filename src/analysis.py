@@ -253,6 +253,11 @@ def detect_incoherences(signals: DeckSignals, round_name: str) -> list[RedFlag]:
     return flags
 
 
+# Plancher de revenu (en EUR) sous lequel un "revenu" est trop faible ou bruité pour
+# valoir preuve de traction. Garde contre les mauvaises extractions (ex: "1 USD").
+REVENUE_BONUS_FLOOR_EUR: float = 10_000.0
+
+
 def _positive_bonuses(signals: DeckSignals) -> dict[str, list[tuple[float, str]]]:
     """Bonus par dimension quand un signal positif est présent.
 
@@ -279,7 +284,8 @@ def _positive_bonuses(signals: DeckSignals) -> dict[str, list[tuple[float, str]]
         or (signals.churn_period == "annual" and signals.churn_rate_pct < 10)
     ):
         add("business_model", 10, f"Churn maîtrisé ({signals.churn_rate_pct:.1f}%).")
-    if signals.revenue_amount is not None and signals.revenue_amount > 0:
+    rev_eur = revenue_in_eur(signals.revenue_amount, signals.revenue_currency)
+    if rev_eur is not None and rev_eur >= REVENUE_BONUS_FLOOR_EUR:
         currency = signals.revenue_currency or ""
         add("traction", 10, f"Revenu établi ({signals.revenue_amount:,.0f} {currency}).".strip())
     if signals.customer_concentration_top1_pct is not None and signals.customer_concentration_top1_pct <= 15:

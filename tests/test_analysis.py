@@ -90,3 +90,16 @@ def test_dilution_sans_valo_pas_de_flag():
     # Sans valorisation pre-money, la dilution n'est pas calculable : aucune alerte.
     signals = DeckSignals(founder_ownership_pct=55.0)
     assert detect_dilution_flag(signals, "serie-a", "10M EUR") is None
+
+
+def test_revenu_derisoire_ne_donne_pas_de_bonus():
+    # Bug reel Square : revenu extrait a 1 USD ne doit pas valoir "revenu etabli".
+    result = run_analysis(DeckSignals(revenue_amount=1.0, revenue_currency="USD"), "serie-a")
+    traction = next(d for d in result.dimension_scores if d.dimension == "traction")
+    assert not any("Revenu établi" in r for r in traction.rationale)
+
+
+def test_vrai_revenu_donne_le_bonus():
+    result = run_analysis(DeckSignals(revenue_amount=200_000.0, revenue_currency="EUR"), "serie-a")
+    traction = next(d for d in result.dimension_scores if d.dimension == "traction")
+    assert any("Revenu établi" in r for r in traction.rationale)
