@@ -538,9 +538,10 @@ DIMENSION_DOCTRINE_QUERY: dict[str, str] = {
 }
 
 # Au-delà de cette distance, un passage est jugé trop peu pertinent pour être cité.
-# Calibré sur le corpus actuel (embeddings MiniLM) : bons matchs < ~1.0, hors-sujet
-# vers 1.3+. Mieux vaut pas de citation qu'une mauvaise. Réglable si le corpus change.
-DOCTRINE_MAX_DISTANCE = 1.2
+# Durci à 1.0 : les bons matchs du corpus sont à 0.7-0.95 ; au-delà, les citations
+# deviennent génériques/hors-sujet. Mieux vaut pas de citation qu'une mauvaise.
+# À remonter si tu enrichis le corpus avec des docs plus ciblés par dimension.
+DOCTRINE_MAX_DISTANCE = 1.0
 
 
 def cite_doctrine(
