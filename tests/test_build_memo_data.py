@@ -35,7 +35,10 @@ def test_build_memo_data_assemblage_complet():
     assert memo.date == date(2026, 7, 12)
     assert memo.verdict.decision == "PASSER"  # dominé par le red flag critique
     assert memo.contre_analyse.disponible is False
-    assert len(memo.forces) == 3
+    # Forces/faiblesses honnêtes : aucune preuve positive ici (forces vides),
+    # et seules les dimensions réellement pénalisées (< base) remontent en faiblesses.
+    assert memo.forces == []
+    assert memo.faiblesses and all(f.score < 60 for f in memo.faiblesses)
     assert memo.annexes.extraction_brute["detected_round"] == "serie-a"
 
     # Le mémo complet se rend sans exception et commence par le titre.

@@ -321,9 +321,11 @@ def select_forces(
 
     Départage documenté (§6.1) : score décroissant, puis poids du round décroissant,
     puis ordre alphabétique de la dimension. Renvoie au plus `count` forces ; moins
-    si le round pèse moins de `count` dimensions.
+    si peu de dimensions dépassent la base. Une dimension à la base neutre (score
+    == BASELINE) n'est pas une force : seules celles avec une vraie preuve positive
+    (score > BASELINE) comptent.
     """
-    eligibles = [d for d in dimension_scores if d.weight > 0]
+    eligibles = [d for d in dimension_scores if d.weight > 0 and d.score > BASELINE_SCORE]
     ranked = sorted(eligibles, key=lambda d: (-d.score, -d.weight, d.dimension))
     return [
         Reason(dimension=d.dimension, label=d.label, score=d.score,
@@ -364,9 +366,10 @@ def select_faiblesses(
         if len(reasons) >= count:
             return reasons
 
-    # 3. Dimensions du round aux plus faibles scores (départage stable inverse).
+    # 3. Dimensions du round réellement faibles (score < base). Une dimension à la
+    # base neutre (60) n'est pas une faiblesse : on ne remonte que les pénalisées.
     weak = sorted(
-        (d for d in dimension_scores if d.weight > 0),
+        (d for d in dimension_scores if d.weight > 0 and d.score < BASELINE_SCORE),
         key=lambda d: (d.score, -d.weight, d.dimension),
     )
     for d in weak:

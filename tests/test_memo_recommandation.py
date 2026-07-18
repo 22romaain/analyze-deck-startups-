@@ -64,9 +64,10 @@ def test_forces_departage_egalite_poids_puis_alphabetique():
 
 
 def test_forces_moins_de_trois_dimensions_notees():
+    # Poids 0 exclu, ET une dimension à la base neutre (60) n'est pas une force.
     dims = [dscore("equipe", 70, 0.40), dscore("probleme", 60, 0.25), dscore("solution", 90, 0.0)]
     forces = select_forces(dims)
-    assert len(forces) == 2  # solution (poids 0) exclue
+    assert [f.dimension for f in forces] == ["equipe"]  # probleme (60 neutre) et solution (poids 0) exclues
 
 
 # --- Faiblesses ---
