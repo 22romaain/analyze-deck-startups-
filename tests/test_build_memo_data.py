@@ -61,6 +61,17 @@ def test_societe_vient_du_nom_extrait_sinon_fallback():
     assert memo_fallback.societe == CONFIG.societe_fallback
 
 
+def test_build_and_write_memo_avec_contre_analyse(tmp_path):
+    # Un review_generator branche remplit la section 6 (sortie du mode degrade).
+    def fake_generator(deck, analysis):
+        return "Contre-analyse : attention au churn et au moat."
+
+    memo, _, _ = build_and_write_memo(
+        make_deck(), DeckSignals(), CONFIG, output_dir=tmp_path, review_generator=fake_generator)
+    assert memo.contre_analyse.disponible is True
+    assert "churn" in memo.contre_analyse.contenu
+
+
 def test_build_and_write_memo_transmet_le_retriever(tmp_path):
     # Câblage réel testé hors ligne : un faux retriever suffit à prouver le passthrough
     # CLI -> build_memo_data -> build_dimensions -> rendu, sans ChromaDB.
