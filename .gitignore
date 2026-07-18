@@ -31,3 +31,6 @@ decks/
 
 # Doctrine VC privee (doublon de la copie RAG dans courses/, elle-meme ignoree)
 criteria/
+
+# Instructions projet (privees)
+CLAUDE.md
