@@ -13,6 +13,7 @@ from src.models import DIMENSION_LABELS, ROUND_OPTIONS, check_round_coherence
 from src.output.memo_data import build_memo_data, load_memo_config
 from src.output.render_docx import render_docx_bytes
 from src.output.render_markdown import render_markdown
+from src.review import make_review_generator
 
 
 # --- Configuration de la page ---
@@ -130,8 +131,10 @@ if "analysis" in st.session_state:
     if st.button("Générer le mémo VC"):
         config = load_memo_config()
         retriever, doctrine_msg = _load_doctrine_retriever()
-        with st.spinner("Construction du mémo..."):
-            memo = build_memo_data(analysis, result, signals, config, retriever=retriever)
+        review_gen = make_review_generator()
+        with st.spinner("Construction du mémo (dont contre-analyse LLM)..."):
+            review = review_gen(analysis, result) if review_gen else None
+            memo = build_memo_data(analysis, result, signals, config, review=review, retriever=retriever)
             st.session_state["memo_md"] = render_markdown(memo)
             st.session_state["memo_docx"] = render_docx_bytes(memo)
             st.session_state["memo_societe"] = memo.societe
