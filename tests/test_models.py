@@ -15,3 +15,15 @@ def test_valo_avec_devise_est_conservee():
     assert s.pre_money_valuation == 8_000_000
     assert s.pre_money_currency == "EUR"
     assert s.new_option_pool_pct == 10.0
+
+
+def test_slide_sources_tolere_les_null_du_llm():
+    # Cas réel : le LLM renvoie un null et une valeur texte. On ne garde que les entiers.
+    s = DeckSignals(slide_sources={"has_why_now": None, "revenue_amount": "7", "runway_months": 12})
+    assert s.slide_sources == {"revenue_amount": 7, "runway_months": 12}
+
+
+def test_liquidation_prefs_null_devient_liste_vide():
+    # Le LLM peut renvoyer null au lieu de [] : ne doit pas faire échouer l'extraction.
+    s = DeckSignals(liquidation_prefs=None)
+    assert s.liquidation_prefs == []

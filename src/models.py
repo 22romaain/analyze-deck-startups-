@@ -9,7 +9,7 @@ avant d'ouvrir la data room.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.captable import LiquidationPref
 
@@ -133,6 +133,28 @@ class DeckSignals(BaseModel):
     customer_concentration_top1_pct: float | None = Field(
         default=None, description="Part du revenu venant du plus gros client, en pourcentage (ex: 30.0). None si absent."
     )
+
+    @field_validator("slide_sources", mode="before")
+    @classmethod
+    def _clean_slide_sources(cls, value: object) -> dict[str, int]:
+        """Le LLM met parfois des null ou des valeurs non entières : on ne garde que les
+        slides exploitables (un entier), on jette le reste sans faire échouer l'extraction."""
+        if not isinstance(value, dict):
+            return {}
+        cleaned: dict[str, int] = {}
+        for key, raw in value.items():
+            try:
+                if raw is not None:
+                    cleaned[str(key)] = int(raw)
+            except (TypeError, ValueError):
+                continue
+        return cleaned
+
+    @field_validator("liquidation_prefs", mode="before")
+    @classmethod
+    def _default_prefs_if_null(cls, value: object) -> object:
+        """Le LLM peut renvoyer null au lieu d'une liste vide : on retombe sur []."""
+        return value if isinstance(value, list) else []
 
     @model_validator(mode="after")
     def _enforce_couples(self) -> "DeckSignals":
