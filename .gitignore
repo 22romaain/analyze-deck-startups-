@@ -28,3 +28,6 @@ decks/
 
 # Base vectorielle ChromaDB (regenerable a partir de courses/).
 /chroma_db/
+
+# Doctrine VC privee (doublon de la copie RAG dans courses/, elle-meme ignoree)
+criteria/
