@@ -6,6 +6,7 @@ encadré. Une seule source : le texte Markdown déjà construit. Si un rendu plu
 mis en forme redevient utile, on réintroduira des helpers par section.
 """
 
+from io import BytesIO
 from pathlib import Path
 
 from docx import Document
@@ -23,17 +24,28 @@ def _is_table_separator(line: str) -> bool:
     return bool(stripped) and set(stripped) <= {"|", "-", " ", ":"} and "-" in stripped
 
 
-def render_docx(memo: MemoData, output_dir: Path | None = None) -> Path:
-    """Écrit le mémo en .docx brut (texte du Markdown en paragraphes) et retourne le chemin."""
+def _build_document(memo: MemoData) -> Document:
+    """Construit le Document Word brut (une ligne du Markdown = un paragraphe)."""
     doc = Document()
     for line in render_markdown(memo).splitlines():
         if _is_table_separator(line):
             continue
         doc.add_paragraph(line)
+    return doc
 
+
+def render_docx_bytes(memo: MemoData) -> bytes:
+    """Rend le mémo Word en octets (fichier en mémoire), pour un téléchargement direct."""
+    buffer = BytesIO()
+    _build_document(memo).save(buffer)
+    return buffer.getvalue()
+
+
+def render_docx(memo: MemoData, output_dir: Path | None = None) -> Path:
+    """Écrit le mémo en .docx brut (texte du Markdown en paragraphes) et retourne le chemin."""
     path = output_path(memo, "docx", output_dir)
     try:
-        doc.save(str(path))
+        _build_document(memo).save(str(path))
     except OSError as exc:
         raise RuntimeError(f"Écriture du mémo Word impossible ({path}) : {exc}") from exc
     return path

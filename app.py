@@ -8,7 +8,11 @@ import streamlit as st
 from src.ingestion import load_deck
 from src.extraction import analyze_deck
 from src.analysis import run_analysis
+from src.main import _load_doctrine_retriever
 from src.models import DIMENSION_LABELS, ROUND_OPTIONS, check_round_coherence
+from src.output.memo_data import build_memo_data, load_memo_config
+from src.output.render_docx import render_docx_bytes
+from src.output.render_markdown import render_markdown
 
 
 # --- Configuration de la page ---
@@ -77,7 +81,8 @@ if "analysis" in st.session_state:
             st.success(f"Montant ({analysis.ask_amount}) cohérent avec un {confirmed_round}.")
 
     # --- Scoring déterministe (étape 2), recalculé sur le round confirmé ---
-    result = run_analysis(signals, confirmed_round)
+    # On passe ask_amount : nécessaire à l'alerte de dilution (cap table).
+    result = run_analysis(signals, confirmed_round, analysis.ask_amount)
 
     st.subheader("Score d'investissement")
     st.metric("Score global (pondéré par le round)", f"{result.global_score:.0f} / 100")
@@ -116,3 +121,33 @@ if "analysis" in st.session_state:
     for key, label in DIMENSION_LABELS.items():
         with st.expander(label):
             st.write(data[key])
+
+    # --- Mémo d'investissement : génération + téléchargements ---
+    st.divider()
+    st.subheader("Mémo d'investissement")
+    st.caption("Assemble le mémo VC complet (verdict, dimensions, red flags, doctrine).")
+
+    if st.button("Générer le mémo VC"):
+        config = load_memo_config()
+        retriever, doctrine_msg = _load_doctrine_retriever()
+        with st.spinner("Construction du mémo..."):
+            memo = build_memo_data(analysis, result, signals, config, retriever=retriever)
+            st.session_state["memo_md"] = render_markdown(memo)
+            st.session_state["memo_docx"] = render_docx_bytes(memo)
+            st.session_state["memo_societe"] = memo.societe
+        st.caption(doctrine_msg)
+
+    if "memo_md" in st.session_state:
+        societe = st.session_state["memo_societe"].replace(" ", "_")
+        col_md, col_docx = st.columns(2)
+        col_md.download_button(
+            "Télécharger le mémo (.md)", st.session_state["memo_md"],
+            file_name=f"memo_{societe}.md", mime="text/markdown",
+        )
+        col_docx.download_button(
+            "Télécharger le mémo (.docx)", st.session_state["memo_docx"],
+            file_name=f"memo_{societe}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        with st.expander("Aperçu du mémo"):
+            st.markdown(st.session_state["memo_md"])

@@ -3,8 +3,18 @@ pas de mise en page (plus de tableaux, plus d'encadré)."""
 
 from docx import Document
 
-from src.output.render_docx import render_docx
+from src.output.render_docx import render_docx, render_docx_bytes
 from tests.test_render_markdown import make_memo
+
+
+def test_render_docx_bytes_est_un_docx_valide():
+    # Un .docx est une archive ZIP : ses premiers octets sont la signature "PK".
+    data = render_docx_bytes(make_memo())
+    assert isinstance(data, bytes) and data[:2] == b"PK"
+    # Relisible par python-docx, et non vide.
+    from io import BytesIO
+    doc = Document(BytesIO(data))
+    assert len(doc.paragraphs) > 0
 
 
 def test_render_docx_cree_fichier_et_contenu(tmp_path):
