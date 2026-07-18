@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.extraction import _complete_with_retry, _is_retryable
+from src.extraction import _complete_with_retry, _extract_analysis, _is_retryable, _parse_response
 
 
 class _RateLimitError(Exception):
@@ -58,3 +58,47 @@ def test_abandon_apres_tous_les_reessais():
     with pytest.raises(RuntimeError, match="rate limit"):
         _complete_with_retry(client, "m", [], sleep=lambda s: None)
     assert client.chat.calls == 4  # 1 initial + 3 reessais
+
+
+# --- Robustesse du JSON renvoye ---
+
+import json as _json
+
+
+def _valid_deck_json() -> str:
+    dims = {d: "texte" for d in ["equipe", "probleme", "solution", "marche", "business_model",
+                                 "traction", "concurrence", "go_to_market", "financials", "ask"]}
+    dims["detected_round"] = "serie-a"
+    dims["ask_amount"] = "8M USD"
+    return _json.dumps(dims)
+
+
+def test_parse_response_ignore_le_preambule():
+    # Le modele bavarde avant/apres le JSON : on ne garde que le bloc { ... }.
+    raw = "Voici le JSON demande :\n" + _valid_deck_json() + "\nJ'espere que ca aide."
+    analysis, _ = _parse_response(raw)
+    assert analysis.detected_round == "serie-a"
+
+
+class _Msg:
+    def __init__(self, content): self.message = type("M", (), {"content": content})()
+
+
+class _Resp:
+    def __init__(self, content): self.choices = [_Msg(content)]
+
+
+def test_extract_analysis_retente_sur_json_casse():
+    # 1er appel : JSON casse (virgule manquante) ; 2e : JSON valide -> doit reussir.
+    outputs = ['{"equipe": "x" "probleme": "y"}', _valid_deck_json()]
+
+    class _Chat:
+        def __init__(self): self.calls = 0
+        def complete(self, model, messages):
+            out = outputs[self.calls]; self.calls += 1
+            return _Resp(out)
+
+    client = _FakeClient(_Chat())
+    analysis, _ = _extract_analysis(client, "m", [])
+    assert analysis.detected_round == "serie-a"
+    assert client.chat.calls == 2

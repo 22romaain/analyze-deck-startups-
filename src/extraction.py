@@ -11,6 +11,7 @@ import time
 
 from dotenv import load_dotenv
 from mistralai.client import Mistral
+from pydantic import ValidationError
 
 from src.ingestion import convert_to_markdown, group_slides
 from src.models import DeckAnalysis, DeckSignals
@@ -79,7 +80,9 @@ déduis-la du contexte du deck (unité, formulation). Si c'est vraiment indéter
 mets les deux à null.
 
 Réponds UNIQUEMENT avec un objet JSON valide : les 13 clés de société/dimensions/round au
-premier niveau, plus la clé "signals". Pas de markdown, pas de commentaires, juste le JSON."""
+premier niveau, plus la clé "signals". Pas de markdown, pas de commentaires, juste le JSON.
+JSON STRICT : échappe les guillemets et retours à la ligne dans les valeurs, une virgule
+entre chaque champ, pas de virgule finale. Chaque dimension est UNE chaîne de texte rédigée."""
 
 # Modèles Mistral
 # Pixtral a été retiré du catalogue Mistral : la vision est désormais intégrée
@@ -151,6 +154,12 @@ def _parse_response(raw_text: str) -> tuple[DeckAnalysis, DeckSignals]:
         lines = raw_text.split("\n")
         raw_text = "\n".join(lines[1:-1]).strip()
 
+    # Ne garder que du premier { au dernier } : ignore un éventuel préambule/texte
+    # parasite autour du JSON (fréquent quand le modèle "explique" sa réponse).
+    start, end = raw_text.find("{"), raw_text.rfind("}")
+    if start != -1 and end > start:
+        raw_text = raw_text[start:end + 1]
+
     data = json.loads(raw_text)
 
     # Extraction des signaux (sous-objet). Absent -> DeckSignals vide (tout None).
@@ -201,6 +210,30 @@ def _complete_with_retry(client, model, messages, sleep=time.sleep):
     )
 
 
+# Nombre de tentatives d'extraction : le LLM renvoie parfois un JSON malformé,
+# une nouvelle génération (modèle stochastique) suffit souvent à obtenir du valide.
+JSON_PARSE_ATTEMPTS = 3
+
+
+def _extract_analysis(client, model, messages, attempts: int = JSON_PARSE_ATTEMPTS):
+    """Appelle Mistral et parse, en re-générant si la réponse est illisible.
+
+    JSON malformé ou schéma invalide : on retente une génération plutôt qu'échouer.
+    Le rate limit est géré à l'intérieur par _complete_with_retry.
+    """
+    last_error: Exception | None = None
+    for _ in range(attempts):
+        response = _complete_with_retry(client, model, messages)
+        raw_text = response.choices[0].message.content
+        try:
+            return _parse_response(raw_text)
+        except (json.JSONDecodeError, ValidationError) as exc:
+            last_error = exc
+    raise RuntimeError(
+        f"Réponse Mistral illisible après {attempts} tentatives : {last_error}"
+    )
+
+
 def analyze_deck(slides: list[bytes], pdf_path: str | None = None) -> tuple[DeckAnalysis, DeckSignals, str]:
     """Analyse un deck en essayant d'abord le mode texte, puis vision en fallback.
 
@@ -226,17 +259,10 @@ def analyze_deck(slides: list[bytes], pdf_path: str | None = None) -> tuple[Deck
 
     if markdown:
         #economise les tokens
-        messages = _build_text_messages(markdown)
-        response = _complete_with_retry(client, TEXT_MODEL, messages)
-        mode = "texte"
+        model, messages, mode = TEXT_MODEL, _build_text_messages(markdown), "texte"
     else:
         #fallback si markitdown échoue
-        slides = group_slides(slides)
-        messages = _build_vision_messages(slides)
-        response = _complete_with_retry(client, VISION_MODEL, messages)
-        mode = "vision"
+        model, messages, mode = VISION_MODEL, _build_vision_messages(group_slides(slides)), "vision"
 
-    raw_text = response.choices[0].message.content
-    analysis, signals = _parse_response(raw_text)
-
+    analysis, signals = _extract_analysis(client, model, messages)
     return analysis, signals, mode
