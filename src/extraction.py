@@ -7,6 +7,7 @@ Le mode texte est tenté en premier, fallback sur vision si le PDF est mal pars�
 import base64
 import json
 import os
+import time
 
 from dotenv import load_dotenv
 from mistralai.client import Mistral
@@ -145,6 +146,42 @@ def _parse_response(raw_text: str) -> tuple[DeckAnalysis, DeckSignals]:
     return DeckAnalysis(**data), DeckSignals(**signals_data)
 
 
+# Attentes (en secondes) entre deux essais Mistral. Calées sur le tier gratuit
+# (~2 requêtes/minute) : on patiente vraiment avant de réessayer.
+RETRY_WAITS_SECONDS = (20, 40, 60)
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Vrai si l'erreur mérite un réessai : rate limit ou aléa transitoire du serveur."""
+    status = getattr(exc, "status_code", None)
+    if status in (429, 500, 502, 503, 504):
+        return True
+    text = str(exc).lower()
+    return any(s in text for s in ("rate limit", "429", "timeout", "temporarily", "overloaded"))
+
+
+def _complete_with_retry(client, model, messages, sleep=time.sleep):
+    """Appelle Mistral en réessayant sur les erreurs transitoires (rate limit surtout).
+
+    Le tier gratuit plafonne à ~2 requêtes/minute : plutôt qu'échouer au premier 429,
+    on patiente et on réessaie. Les autres erreurs (clé invalide, JSON) remontent direct.
+    sleep injectable pour tester sans attendre réellement.
+    """
+    last_exc: Exception | None = None
+    for wait in (0, *RETRY_WAITS_SECONDS):
+        if wait:
+            sleep(wait)
+        try:
+            return client.chat.complete(model=model, messages=messages)
+        except Exception as exc:
+            if not _is_retryable(exc):
+                raise
+            last_exc = exc
+    raise RuntimeError(
+        f"Mistral inaccessible après {len(RETRY_WAITS_SECONDS)} réessais (rate limit ?) : {last_exc}"
+    )
+
+
 def analyze_deck(slides: list[bytes], pdf_path: str | None = None) -> tuple[DeckAnalysis, DeckSignals, str]:
     """Analyse un deck en essayant d'abord le mode texte, puis vision en fallback.
 
@@ -171,13 +208,13 @@ def analyze_deck(slides: list[bytes], pdf_path: str | None = None) -> tuple[Deck
     if markdown:
         #economise les tokens
         messages = _build_text_messages(markdown)
-        response = client.chat.complete(model=TEXT_MODEL, messages=messages)
+        response = _complete_with_retry(client, TEXT_MODEL, messages)
         mode = "texte"
     else:
         #fallback si markitdown échoue
         slides = group_slides(slides)
         messages = _build_vision_messages(slides)
-        response = client.chat.complete(model=VISION_MODEL, messages=messages)
+        response = _complete_with_retry(client, VISION_MODEL, messages)
         mode = "vision"
 
     raw_text = response.choices[0].message.content
