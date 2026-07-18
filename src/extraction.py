@@ -122,6 +122,24 @@ def _build_text_messages(markdown: str) -> list[dict]:
     ]
 
 
+def _humanize(value, inline: bool = False) -> str:
+    """Rend une valeur JSON (dict/list imbriqués du LLM) en texte lisible.
+
+    Filet quand le LLM structure une dimension au lieu de rédiger : au lieu d'un
+    repr Python (`{'nom': ...}`), on produit des lignes `clé : valeur` et des listes
+    à puces. inline=True compacte un sous-objet sur une ligne (séparateur ' ; ').
+    """
+    if isinstance(value, dict):
+        parts = [f"{str(k).replace('_', ' ')} : {_humanize(v, inline=True)}"
+                 for k, v in value.items()]
+        return " ; ".join(parts) if inline else "\n".join(parts)
+    if isinstance(value, list):
+        if all(not isinstance(x, (dict, list)) for x in value):
+            return ", ".join(str(x) for x in value)
+        return "\n".join(f"- {_humanize(x, inline=True)}" for x in value)
+    return str(value)
+
+
 def _parse_response(raw_text: str) -> tuple[DeckAnalysis, DeckSignals]:
     """Parse la réponse brute de Mistral en (DeckAnalysis, DeckSignals).
 
@@ -138,10 +156,11 @@ def _parse_response(raw_text: str) -> tuple[DeckAnalysis, DeckSignals]:
     # Extraction des signaux (sous-objet). Absent -> DeckSignals vide (tout None).
     signals_data = data.pop("signals", {}) or {}
 
-    # Filet de sécurité : sous-objets restants convertis en texte lisible
+    # Filet de sécurité : le LLM structure parfois une dimension (dict/list) au lieu
+    # de rédiger. On rend ça en texte lisible plutôt qu'en repr Python brut.
     for key, value in data.items():
-        if isinstance(value, dict):
-            data[key] = "\n".join(f"{k}: {v}" for k, v in value.items())
+        if isinstance(value, (dict, list)):
+            data[key] = _humanize(value)
 
     return DeckAnalysis(**data), DeckSignals(**signals_data)
 
