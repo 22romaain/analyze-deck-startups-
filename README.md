@@ -10,9 +10,9 @@ scoring et red flags déterministes → mémo (Markdown + Word), avec citations 
   tire les dimensions VC (équipe, marché, traction, business model, etc.) plus
   des signaux chiffrés typés.
 - **Scoring déterministe** (aucun LLM) : note chaque dimension, applique les red
-  flags du référentiel (plafonnement §5.2), calcule un score global pondéré par
+  flags du référentiel (dans le code), calcule un score global pondéré par
   le round.
-- **Cap table** : dilution (pre-money + option pool), simulation de waterfall
+- **Cap table** : dilution (pre-money), simulation de waterfall
   (liquidation preferences), alertes sur la détention fondateurs.
 - **RAG** : cite la doctrine VC (cours perso indexés localement) en face de
   chaque dimension.
