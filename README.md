@@ -20,18 +20,6 @@ doctrine VC via un RAG local.
 - **Sortie** : un mémo `.md` et `.docx` (verdict, dimensions, red flags,
   contre-analyse).
 
-## Installation
-
-```bash
-python3 -m venv venv
-./venv/bin/pip install -r requirements.txt
-```
-
-Créer un fichier `.env` à la racine (jamais commité) avec la clé Mistral :
-
-```
-MISTRAL_API_KEY=ta_cle_ici
-```
 
 ## Utilisation
 
@@ -41,21 +29,9 @@ MISTRAL_API_KEY=ta_cle_ici
 ./venv/bin/python -m src.main chemin/vers/deck.pdf
 ```
 
-**Interface web** (upload PDF → mémo + téléchargements) :
-
-```bash
-streamlit run app.py
-```
-
-**Tests** :
-
-```bash
-./venv/bin/python -m pytest -q
-```
-
 ## Corpus RAG (doctrine)
 
-Les cours personnels vivent dans `courses/` (contenu ignoré par git). Après avoir
+Les cours personnels vivent dans `courses/` (contenu ignoré par git, en local). Après avoir
 ajouté ou modifié des documents (`.md`, `.txt`, `.pdf`, `.docx`), reconstruire
 l'index :
 
