@@ -2,8 +2,7 @@
 
 Analyse un pitch deck comme un analyste VC et produit un mémo d'investissement
 structuré. Le flux : PDF → extraction par LLM vision → signaux structurés →
-scoring et red flags déterministes → mémo (Markdown + Word), avec citations de
-doctrine VC via un RAG local.
+scoring et red flags déterministes → mémo (Markdown + Word), avec citations via un RAG local.
 
 ## Ce que fait l'outil
 
