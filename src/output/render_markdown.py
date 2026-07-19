@@ -60,12 +60,11 @@ def _render_reason(reason: Reason) -> str:
 
 
 def _render_recommandation(memo: MemoData) -> list[str]:
-    """Section 1 : 3 forces, 3 faiblesses, la question décisive."""
+    """Section 1 : 3 forces, 3 faiblesses."""
     lines = ["## Recommandation", "", "### Forces"]
     lines += [_render_reason(r) for r in memo.forces] or ["_Aucune force identifiée._"]
     lines += ["", "### Faiblesses"]
     lines += [_render_reason(r) for r in memo.faiblesses] or ["_Aucune faiblesse identifiée._"]
-    lines += ["", "### Question décisive", memo.question_decisive.question]
     return lines
 
 
@@ -143,21 +142,6 @@ def _render_review(memo: MemoData) -> list[str]:
     return lines
 
 
-def _render_founder_questions(memo: MemoData) -> list[str]:
-    """Section 7 : questions aux fondateurs (liste numérotée)."""
-    lines = ["## Questions aux fondateurs", ""]
-    if not memo.questions_fondateurs:
-        lines.append("_Aucune question générée._")
-        return lines
-    for i, q in enumerate(memo.questions_fondateurs, start=1):
-        lines.append(f"{i}. {q.question}")
-        if q.bonne_reponse:
-            lines.append(f"   - Bonne réponse : {q.bonne_reponse}")
-        if q.mauvaise_reponse:
-            lines.append(f"   - Mauvaise réponse : {q.mauvaise_reponse}")
-    return lines
-
-
 def _render_annexes(memo: MemoData) -> list[str]:
     """Section 8 : méthodologie, limites, extraction brute."""
     a = memo.annexes
@@ -183,7 +167,6 @@ def render_markdown(memo: MemoData) -> str:
         _render_red_flags(memo),
         _render_missing_data(memo),
         _render_review(memo),
-        _render_founder_questions(memo),
         _render_annexes(memo),
     ]
     lines: list[str] = []

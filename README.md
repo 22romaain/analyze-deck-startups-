@@ -18,7 +18,7 @@ doctrine VC via un RAG local.
 - **RAG** : cite la doctrine VC (cours perso indexés localement) en face de
   chaque dimension.
 - **Sortie** : un mémo `.md` et `.docx` (verdict, dimensions, red flags,
-  questions aux fondateurs).
+  contre-analyse).
 
 ## Installation
 

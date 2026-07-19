@@ -11,7 +11,6 @@ from src.output.memo_data import (
     Annexes,
     DashboardRow,
     DimensionSection,
-    KeyQuestion,
     MemoData,
     MissingData,
     Reason,
@@ -56,10 +55,6 @@ def make_memo() -> MemoData:
             Reason(dimension="go_to_market", label="Go-to-Market", score=55.0,
                    preuve="Base neutre : 60."),
         ],
-        question_decisive=KeyQuestion(
-            question="Le moteur de croissance est-il identifié et répétable, ou la traction est-elle un agrégat de coups uniques ?",
-            bonne_reponse="", mauvaise_reponse="", origine="dimension_faible",
-        ),
         dashboard=[
             DashboardRow(metrique="ARR", valeur="200 000 EUR", statut="DANS_LA_NORME", benchmark="2,5-3,5M USD", slide=5),
             DashboardRow(metrique="Churn", valeur="2%/mois", statut="TOP_QUARTILE", benchmark="< 2%/mois"),
@@ -104,16 +99,6 @@ def make_memo() -> MemoData:
             bandeau="Contre-analyse indisponible (erreur API).",
             contenu=None,
         ),
-        questions_fondateurs=[
-            KeyQuestion(
-                question="Le burn multiple : combien coûte 1 EUR d'ARR net nouveau ?",
-                bonne_reponse="", mauvaise_reponse="", origine="red_flag",
-            ),
-            KeyQuestion(
-                question="Donnée attendue absente du deck : Cap table (part fondateurs). Pourquoi, et quelle est la valeur réelle ?",
-                bonne_reponse="", mauvaise_reponse="", origine="donnee_manquante",
-            ),
-        ],
         annexes=Annexes(
             methodologie="Trois couches : extraction LLM vision, scoring déterministe, mise en forme.",
             limites="Traçabilité slide reportée. Contre-analyse absente.",

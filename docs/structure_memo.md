@@ -45,7 +45,6 @@ les seuls points où cette spec s'écarte de la consigne ; ils priment.
   commence par « Incohérence interne » (convention actuelle de `analysis.py`).
 - Données manquantes : `DeckSignals` à None croisés aux attendus du round (config).
 - Contre-analyse : `review` (None pour l'instant).
-- Questions fondateurs : questions du référentiel (encodées en config) priorisées.
 - Annexes : `DeckAnalysis` (narratif) + métadonnées (version référentiel).
 
 ## 3. Fichiers livrés
@@ -91,13 +90,6 @@ les seuls points où cette spec s'écarte de la consigne ; ils priment.
       // valeur absente ici -> NON_EVALUABLE
     }
   },
-  "questions_referentiel": {
-    "seed": {
-      "traction": "Les utilisateurs reviennent-ils ? Le montrent-ils (cohortes) ?",
-      "business_model": "Le pricing a-t-il été confronté à de vrais clients ?"
-      // ... texte copié du référentiel, jamais généré
-    }
-  },
   "version_referentiel": "criteres_analyse_vc.md @ 2026-07"
 }
 ```
@@ -123,14 +115,12 @@ MemoData
   verdict: Verdict
   forces: list[Reason]          # exactement 3 si >=3 dimensions notées, sinon autant que possible
   faiblesses: list[Reason]      # même règle
-  question_decisive: KeyQuestion
   dashboard: list[DashboardRow]
   dimensions: list[DimensionSection]   # ordre = poids décroissant du round
   red_flags: list[RedFlagRow]          # tri sévérité décroissante
   incoherences: list[RedFlagRow]       # sous-ensemble internes
   donnees_manquantes: list[MissingData]
   contre_analyse: ReviewBlock          # porte le mode dégradé
-  questions_fondateurs: list[KeyQuestion]   # top 5
   annexes: Annexes
 
 Verdict            -> decision: Literal["PASSER","APPROFONDIR","POURSUIVRE"]
@@ -149,8 +139,6 @@ DimensionSection   -> dimension, label, score, weight, grade,
 RedFlagRow         -> severity, dimension, label_dimension, message,
                       est_incoherence: bool
 MissingData        -> label, criticite, justification: str  # texte référentiel
-KeyQuestion        -> question: str, bonne_reponse: str, mauvaise_reponse: str,
-                      origine: Literal["red_flag","donnee_manquante","dimension_faible","referentiel"]
 ReviewBlock        -> disponible: bool, bandeau: str, contenu: str | None
 Annexes            -> methodologie: str, limites: str, extraction_brute: dict
 ```
@@ -174,12 +162,6 @@ Convention de borne (documentée et testée) : bornes **larges vers APPROFONDIR*
   (valeur de `DeckSignals` liée si dispo, sinon extrait narratif).
 - **3 faiblesses** = par priorité : red flags CRITIQUE, puis MAJEUR, puis
   dimensions aux plus faibles scores, jusqu'à 3.
-- **Question décisive** (`KeyQuestion`), priorité :
-  1. s'il existe un red flag CRITIQUE : question du référentiel associée à sa
-     **dimension** (mapping config `questions_referentiel[round][dimension]`) ;
-  2. sinon : la donnée manquante de plus haute criticité ;
-  3. sinon : question d'analyste du round pour la **dimension la plus faible**.
-  Sélection dans `build_memo_data`, reproductible, jamais dans le LLM.
 
 ### Section 2 — Tableau de bord
 Lignes = `attendus_par_round[round]` (config, sourcé §5.4). Pour chaque ligne :
@@ -213,13 +195,7 @@ avec l'encart « Contre-analyse indisponible (erreur API) ». Le mémo se génè
 quand même. Si présente plus tard : bandeau exact
 « Critique générée par LLM. Non intégrée au score. Non reproductible. » puis contenu.
 
-### Section 7 — Questions fondateurs (top 5)
-Priorité : questions liées aux red flags, puis aux données manquantes (sourcées
-config/référentiel), complétées par les questions d'analyste du round. Chaque
-question : `bonne_reponse` (ce qu'une bonne réponse impliquerait) et
-`mauvaise_reponse`.
-
-### Section 8 — Annexes
+### Section 7 — Annexes
 `methodologie` (les 3 couches, la mécanique de scoring réellement appliquée,
 `version_referentiel`), `limites` (dont traçabilité slide reportée, contre-analyse
 absente), `extraction_brute` = `DeckAnalysis.model_dump()` mis en forme.
@@ -266,7 +242,6 @@ elle n'apparaît pas. **L'extraction ne capture pas encore la slide.** Donc :
   POURSUIVRE, plus le cas `score == seuil` (convention large documentée).
 - Forces/faiblesses : nominal, < 3 dimensions notées, égalité de scores
   (départage stable).
-- Question décisive : les 3 règles de priorité.
 - `render_markdown` : golden test (fixture `MemoData` -> markdown attendu, comparé
   caractère par caractère). Le golden test fige une sortie de référence dans un
   fichier ; toute dérive future casse le test volontairement.
@@ -282,10 +257,10 @@ elle n'apparaît pas. **L'extraction ne capture pas encore la slide.** Donc :
 1. `memo_config.json` + `load_memo_config` (validation) + modèle `Verdict` +
    fonction de verdict + tests verdict.
 2. Modèles `MemoData` complets + `build_memo_data` sur en-tête + recommandation +
-   tests forces/faiblesses/question.
+   tests forces/faiblesses.
 3. `render_markdown` sections 0-1-2 + golden test.
 4. `build_memo_data` + `render_markdown` sections 3-4-5.
-5. Section 6 (dégradée) + section 7.
+5. Section 6 (contre-analyse, dégradée).
 6. `render_docx` complet + tests.
 7. Branchement CLI dans `main.py` : ingestion -> extraction -> scoring -> mémo,
    écriture des deux fichiers dans `output/`.
@@ -297,9 +272,3 @@ elle n'apparaît pas. **L'extraction ne capture pas encore la slide.** Donc :
 3. `DevilsAdvocateReview` (appel Mistral texte) à construire pour la section 6.
 4. Benchmarks du référentiel non structurés : dashboard partiel (`NON_EVALUABLE`).
 5. Nom de société non extrait proprement (fallback config).
-6. `questions_referentiel` (config) : le texte des questions est copié du référentiel
-   mais `bonne_reponse`/`mauvaise_reponse` sont vides, à rédiger par un expert VC.
-   Le code ne les génère jamais. `attendus_par_round` ne couvre que les signaux
-   **typés** de `DeckSignals` ; les attendus narratifs (§5.4 : équipe détaillée,
-   problème, use of funds) ne sont pas traçables tant que l'extraction ne les
-   structure pas.

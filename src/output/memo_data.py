@@ -55,14 +55,6 @@ class AttenduSignal(BaseModel):
     criticite: Severity
 
 
-class QuestionRef(BaseModel):
-    """Une question d'analyste copiée du référentiel. Les réponses type sont à
-    rédiger par un expert : le code ne les génère jamais (vides par défaut)."""
-    question: str
-    bonne_reponse: str = ""
-    mauvaise_reponse: str = ""
-
-
 class BenchmarkBand(BaseModel):
     """Bornes de comparaison d'une métrique. Le sens (plus bas ou plus haut = mieux)
     se déduit de l'ordre : si top <= norme, plus bas est meilleur (ex: churn) ;
@@ -79,7 +71,6 @@ class MemoConfig(BaseModel):
     societe_fallback: str
     attendus_par_round: dict[str, list[AttenduSignal]]
     benchmarks_par_round: dict[str, dict[str, BenchmarkBand]] = Field(default_factory=dict)
-    questions_referentiel: dict[str, dict[str, QuestionRef]]
     version_referentiel: str
 
     @model_validator(mode="after")
@@ -178,9 +169,6 @@ DashboardStatut = Literal[
     "TOP_QUARTILE", "DANS_LA_NORME", "SOUS_LA_BARRE", "ABSENT", "NON_EVALUABLE"
 ]
 
-# D'où vient une question posée au comité (traçabilité de la sélection).
-QuestionOrigine = Literal["red_flag", "donnee_manquante", "dimension_faible", "referentiel"]
-
 
 class Reason(BaseModel):
     """Une force ou une faiblesse : la dimension, son score, et la preuve qui l'appuie.
@@ -192,18 +180,6 @@ class Reason(BaseModel):
     score: float
     preuve: str
     slide: int | None = None
-
-
-class KeyQuestion(BaseModel):
-    """Une question à poser aux fondateurs, avec ce qu'une bonne/mauvaise réponse révèle.
-
-    bonne_reponse / mauvaise_reponse peuvent être vides tant qu'un expert ne les a
-    pas rédigées : le code ne les invente jamais (elles viennent de la config).
-    """
-    question: str
-    bonne_reponse: str
-    mauvaise_reponse: str
-    origine: QuestionOrigine
 
 
 class DashboardRow(BaseModel):
@@ -281,14 +257,12 @@ class MemoData(BaseModel):
     verdict: Verdict
     forces: list[Reason]
     faiblesses: list[Reason]
-    question_decisive: KeyQuestion
     dashboard: list[DashboardRow]
     dimensions: list[DimensionSection]
     red_flags: list[RedFlagRow]
     incoherences: list[RedFlagRow]
     donnees_manquantes: list[MissingData]
     contre_analyse: ReviewBlock
-    questions_fondateurs: list[KeyQuestion]
     annexes: Annexes
 
 
@@ -381,65 +355,6 @@ def select_faiblesses(
         if len(reasons) >= count:
             break
     return reasons
-
-
-def _round_weight(round_name: str, dimension: str) -> float:
-    """Poids d'une dimension dans le round (0 si non pondérée). Sert au départage."""
-    return ROUND_WEIGHTS.get(round_name, {}).get(dimension, 0.0)
-
-
-def select_question_decisive(
-    analysis: AnalysisResult, signals: DeckSignals, config: MemoConfig
-) -> KeyQuestion:
-    """La seule question à trancher, sélectionnée par règles (jamais par le LLM).
-
-    Priorité : red flag critique -> donnée manquante la plus critique -> dimension
-    la plus faible. Reproductible : même entrée, même question.
-    """
-    round_name = analysis.round
-    questions = config.questions_referentiel.get(round_name, {})
-
-    # Règle 1 : un red flag CRITIQUE dont la dimension porte une question en config.
-    critiques = sorted(
-        (f for f in analysis.red_flags if f.severity == "CRITIQUE"),
-        key=lambda f: (-_round_weight(round_name, f.dimension), f.dimension),
-    )
-    for f in critiques:
-        q = questions.get(f.dimension)
-        if q is not None:
-            return KeyQuestion(question=q.question, bonne_reponse=q.bonne_reponse,
-                               mauvaise_reponse=q.mauvaise_reponse, origine="red_flag")
-
-    # Règle 2 : la donnée attendue absente de plus haute criticité.
-    rank = {"MAJEUR": 2, "MINEUR": 1}
-    attendus = config.attendus_par_round.get(round_name, [])
-    missing = [a for a in attendus if getattr(signals, a.signal) is None]
-    if missing:
-        missing.sort(key=lambda a: -rank.get(a.criticite, 0))  # stable : ordre config à égalité
-        a = missing[0]
-        return KeyQuestion(
-            question=f"Donnée attendue absente du deck : {a.label}. Pourquoi, et quelle est la valeur réelle ?",
-            bonne_reponse="", mauvaise_reponse="", origine="donnee_manquante",
-        )
-
-    # Règle 3 : question d'analyste pour la dimension du round la plus faible.
-    weighted = [d for d in analysis.dimension_scores if d.weight > 0]
-    if weighted:
-        weakest = sorted(weighted, key=lambda d: (d.score, -d.weight, d.dimension))[0]
-        q = questions.get(weakest.dimension)
-        if q is not None:
-            return KeyQuestion(question=q.question, bonne_reponse=q.bonne_reponse,
-                               mauvaise_reponse=q.mauvaise_reponse, origine="dimension_faible")
-
-    # Repli : une question du round si disponible, sinon question générique.
-    if questions:
-        first = sorted(questions.items())[0][1]
-        return KeyQuestion(question=first.question, bonne_reponse=first.bonne_reponse,
-                           mauvaise_reponse=first.mauvaise_reponse, origine="referentiel")
-    return KeyQuestion(
-        question="Quelle est la principale incertitude non levée par ce deck ?",
-        bonne_reponse="", mauvaise_reponse="", origine="referentiel",
-    )
 
 
 # --- Tableau de bord (section 2) ---
@@ -664,7 +579,7 @@ def build_missing_data(
     return missing
 
 
-# --- Contre-analyse (section 6) et questions fondateurs (section 7) ---
+# --- Contre-analyse (section 6) ---
 
 # Bandeaux fixes : le mode dégradé et le mode disponible portent un message exact.
 REVIEW_BANDEAU_INDISPONIBLE = "Contre-analyse indisponible (erreur API)."
@@ -680,56 +595,6 @@ def build_review_block(review_content: str | None = None) -> ReviewBlock:
     if review_content is None:
         return ReviewBlock(disponible=False, bandeau=REVIEW_BANDEAU_INDISPONIBLE, contenu=None)
     return ReviewBlock(disponible=True, bandeau=REVIEW_BANDEAU_DISPONIBLE, contenu=review_content)
-
-
-def build_founder_questions(
-    analysis: AnalysisResult, signals: DeckSignals, config: MemoConfig, limit: int = 5
-) -> list[KeyQuestion]:
-    """Top `limit` questions à poser : red flags d'abord, puis données manquantes,
-    puis questions d'analyste du round. Déduplication par texte de question."""
-    round_name = analysis.round
-    questions_cfg = config.questions_referentiel.get(round_name, {})
-    result: list[KeyQuestion] = []
-    seen: set[str] = set()
-
-    def add(kq: KeyQuestion) -> None:
-        if kq.question not in seen:
-            seen.add(kq.question)
-            result.append(kq)
-
-    # 1. Questions liées aux red flags (sévérité décroissante, puis poids décroissant).
-    ranked = sorted(
-        analysis.red_flags,
-        key=lambda f: (_SEVERITY_ORDER[f.severity], -_round_weight(round_name, f.dimension), f.dimension),
-    )
-    for f in ranked:
-        q = questions_cfg.get(f.dimension)
-        if q is not None:
-            add(KeyQuestion(question=q.question, bonne_reponse=q.bonne_reponse,
-                            mauvaise_reponse=q.mauvaise_reponse, origine="red_flag"))
-        if len(result) >= limit:
-            return result
-
-    # 2. Questions liées aux données manquantes (criticité décroissante).
-    rank = {"MAJEUR": 2, "MINEUR": 1}
-    missing = sorted(build_missing_data(signals, round_name, config),
-                     key=lambda m: -rank.get(m.criticite, 0))
-    for m in missing:
-        add(KeyQuestion(
-            question=f"Donnée attendue absente du deck : {m.label}. Pourquoi, et quelle est la valeur réelle ?",
-            bonne_reponse="", mauvaise_reponse="", origine="donnee_manquante"))
-        if len(result) >= limit:
-            return result
-
-    # 3. Compléter avec les questions d'analyste du round (poids décroissant).
-    for dim in sorted(questions_cfg, key=lambda d: (-_round_weight(round_name, d), d)):
-        q = questions_cfg[dim]
-        add(KeyQuestion(question=q.question, bonne_reponse=q.bonne_reponse,
-                        mauvaise_reponse=q.mauvaise_reponse, origine="referentiel"))
-        if len(result) >= limit:
-            return result
-
-    return result
 
 
 # --- Annexes (section 8) ---
@@ -749,7 +614,6 @@ def build_annexes(deck: DeckAnalysis, config: MemoConfig, review_disponible: boo
     limites = [
         "Traçabilité slide partielle : le tableau de bord affiche la slide source (au mieux) ; les dimensions narratives ne sont pas encore tracées.",
         "Benchmarks partiels : une métrique sans repère encodé est non évaluable.",
-        "Réponses type des questions à rédiger par un analyste, jamais générées.",
     ]
     if not review_disponible:
         limites.append("Contre-analyse LLM absente (brique non encore construite).")
@@ -791,13 +655,11 @@ def build_memo_data(
         verdict=compute_verdict(analysis.global_score, analysis.red_flags, config),
         forces=select_forces(analysis.dimension_scores),
         faiblesses=select_faiblesses(analysis.dimension_scores, analysis.red_flags),
-        question_decisive=select_question_decisive(analysis, signals, config),
         dashboard=build_dashboard(signals, analysis.round, config),
         dimensions=build_dimensions(analysis, config, retriever, doctrine_dimensions),
         red_flags=red_flag_rows,
         incoherences=filter_incoherences(red_flag_rows),
         donnees_manquantes=build_missing_data(signals, analysis.round, config),
         contre_analyse=review_block,
-        questions_fondateurs=build_founder_questions(analysis, signals, config),
         annexes=build_annexes(deck, config, review_block.disponible),
     )

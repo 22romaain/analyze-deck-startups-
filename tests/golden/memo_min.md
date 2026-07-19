@@ -23,9 +23,6 @@ APPROFONDIR : score 58 dans [40, 65].
 - **Concurrence** — 52/100 : Base neutre : 60.
 - **Go-to-Market** — 55/100 : Base neutre : 60.
 
-### Question décisive
-Le moteur de croissance est-il identifié et répétable, ou la traction est-elle un agrégat de coups uniques ?
-
 ## Tableau de bord
 
 | Métrique | Valeur | Statut | Benchmark | Source |
@@ -69,11 +66,6 @@ Règles appliquées :
 ## Contre-analyse
 
 > Contre-analyse indisponible (erreur API).
-
-## Questions aux fondateurs
-
-1. Le burn multiple : combien coûte 1 EUR d'ARR net nouveau ?
-2. Donnée attendue absente du deck : Cap table (part fondateurs). Pourquoi, et quelle est la valeur réelle ?
 
 ## Annexes
 
