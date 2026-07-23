@@ -7,100 +7,93 @@ casse le test : on doit alors regénérer sciemment le golden.
 from datetime import date
 from pathlib import Path
 
+from src.captable import DilutionResult
+from src.models import Finding
 from src.output.memo_data import (
+    DISCLAIMER,
     Annexes,
-    DashboardRow,
-    DimensionSection,
+    CapTableSection,
+    DeckFigureRow,
+    DimensionQualitative,
+    GrilleRow,
     MemoData,
-    MissingData,
-    Reason,
-    RedFlagRow,
     ReviewBlock,
-    Verdict,
 )
+from src.output.synthese import Recommandation, Synthese
 from src.output.render_markdown import render_markdown
 
 GOLDEN = Path(__file__).parent / "golden" / "memo_min.md"
 
 
 def make_memo() -> MemoData:
-    """Un MemoData complet et stable, sert de fixture au golden test.
+    """Un MemoData complet et stable (analyse qualitative), fixture du golden test.
 
-    Les sections non encore rendues (dimensions, red flags, etc.) sont fournies
-    vides mais valides : MemoData exige tous ses champs.
+    Les dimensions ont narratif=None par défaut (le test 'sans narratif' s'appuie
+    dessus) ; un test dédié le renseigne pour vérifier son rendu.
     """
+    ltv = Finding(dimension="business_model", categorie="redhibitoire",
+                  message="LTV/CAC de 0.7 : destruction de valeur à chaque acquisition client.",
+                  source="critere:unit_economics_ltv_cac_destruction")
+    marge = Finding(dimension="business_model", categorie="avantage_competitif",
+                    message="Marge brute de 82%, dans la norme d'un modèle logiciel.",
+                    source="critere:marge_brute_saine")
+    exit_founder = Finding(dimension="equipe", categorie="atout_equipe",
+                           message="Track record : au moins un fondateur a déjà réalisé une sortie.",
+                           source="critere:equipe_exit_precedente")
+    tam = Finding(dimension="marche", categorie="vigilance",
+                  message="Aucune méthode de dimensionnement du marché explicite.",
+                  source="detecteur")
+    incoherence = Finding(dimension="traction", categorie="vigilance",
+                          message="Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.",
+                          source="detecteur")
     return MemoData(
         societe="Acme SaaS",
         round="serie-a",
         ask_amount="8M EUR",
         date=date(2026, 7, 12),
-        verdict=Verdict(
-            decision="APPROFONDIR",
-            justification="APPROFONDIR : score 58 dans [40, 65].",
-            score_global=58.0, nb_critiques=0, nb_majeurs=1,
+        disclaimer=DISCLAIMER,
+        synthese=Synthese(
+            atouts=[marge, exit_founder],
+            points_negatifs=[ltv, tam],
+            a_creuser=[],
+            recommandation=Recommandation(
+                decision="APPROFONDIR",
+                justification="APPROFONDIR : 1 constat(s) rédhibitoire(s) à instruire et à justifier avant toute décision.",
+                nb_redhibitoires=1, nb_faiblesses=0, nb_atouts=2,
+            ),
         ),
-        forces=[
-            Reason(dimension="traction", label="Traction", score=82.0,
-                   preuve="+10 : Revenu établi (200,000 EUR)."),
-            Reason(dimension="equipe", label="Équipe", score=75.0,
-                   preuve="+15 : Profil technique présent dans l'équipe fondatrice."),
-            Reason(dimension="business_model", label="Business Model", score=70.0,
-                   preuve="+10 : Burn multiple de 1.2, capital efficace."),
+        grille=[
+            GrilleRow(label="ARR", criticite="MAJEUR", statut="PRESENT", valeur="200 000 EUR"),
+            GrilleRow(label="Churn ou rétention", criticite="MAJEUR", statut="INCONNU", valeur=None),
+            GrilleRow(label="Cap table (part fondateurs)", criticite="MINEUR", statut="INCONNU", valeur=None),
         ],
-        faiblesses=[
-            Reason(dimension="marche", label="Marché", score=42.0,
-                   preuve="TAM calculé uniquement en top-down, sans validation bottom-up."),
-            Reason(dimension="concurrence", label="Concurrence", score=52.0,
-                   preuve="Base neutre : 60."),
-            Reason(dimension="go_to_market", label="Go-to-Market", score=55.0,
-                   preuve="Base neutre : 60."),
-        ],
-        dashboard=[
-            DashboardRow(metrique="ARR", valeur="200 000 EUR", statut="DANS_LA_NORME", benchmark="2,5-3,5M USD", slide=5),
-            DashboardRow(metrique="Churn", valeur="2%/mois", statut="TOP_QUARTILE", benchmark="< 2%/mois"),
-            DashboardRow(metrique="Burn multiple", valeur=None, statut="ABSENT", benchmark="~1,2x"),
-            DashboardRow(metrique="NRR", valeur="105%", statut="NON_EVALUABLE", benchmark=None),
+        chiffres_deck=[
+            DeckFigureRow(libelle="CAGR", valeur="140 %", periode="2021-2024", slide=7),
+            DeckFigureRow(libelle="NPS", valeur="62", periode=None, slide=None),
         ],
         dimensions=[
-            DimensionSection(
-                dimension="traction", label="Traction", score=82.0, weight=0.30, grade="A",
-                regle_appliquee=["Base neutre : 60.", "+10 : Revenu établi (200,000 EUR)."],
-                red_flags_inline=[RedFlagRow(
-                    severity="MINEUR", dimension="traction", label_dimension="Traction",
-                    message="Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.",
-                    est_incoherence=True,
-                )],
-            ),
-            DimensionSection(
-                dimension="business_model", label="Business Model", score=70.0, weight=0.20, grade="B",
-                regle_appliquee=["Base neutre : 60.", "+10 : Burn multiple de 1.2, capital efficace."],
-                red_flags_inline=[],
-            ),
+            DimensionQualitative(dimension="business_model", label="Business Model",
+                                 narratif=None, findings=[ltv, marge]),
+            DimensionQualitative(dimension="equipe", label="Équipe",
+                                 narratif=None, findings=[exit_founder]),
         ],
-        red_flags=[
-            RedFlagRow(severity="MAJEUR", dimension="marche", label_dimension="Marché",
-                       message="TAM calculé uniquement en top-down, sans validation bottom-up.",
-                       est_incoherence=False),
-            RedFlagRow(severity="MINEUR", dimension="traction", label_dimension="Traction",
-                       message="Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.",
-                       est_incoherence=True),
-        ],
-        incoherences=[
-            RedFlagRow(severity="MINEUR", dimension="traction", label_dimension="Traction",
-                       message="Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.",
-                       est_incoherence=True),
-        ],
-        donnees_manquantes=[
-            MissingData(label="Cap table (part fondateurs)", criticite="MINEUR",
-                        justification="Donnée secondaire attendue au stade serie-a et absente du deck. L'absence d'une donnée est un signal, pas un neutre (référentiel §1.1)."),
-        ],
+        incoherences=[incoherence],
         contre_analyse=ReviewBlock(
             disponible=False,
             bandeau="Contre-analyse indisponible (erreur API).",
             contenu=None,
         ),
+        cap_table=CapTableSection(
+            calculable=True, donnees_absentes=[],
+            pre_money=24_000_000.0, amount=8_000_000.0, founder_pct_pre=60.0,
+            dilution=DilutionResult(
+                post_money=32_000_000.0, new_investor_pct=25.0, option_pool_pct=0.0,
+                founder_pct_post=45.0, founder_dilution_points=15.0,
+            ),
+            waterfall=None,
+        ),
         annexes=Annexes(
-            methodologie="Trois couches : extraction LLM vision, scoring déterministe, mise en forme.",
+            methodologie="Trois couches : extraction LLM vision, analyse déterministe en constats, mise en forme.",
             limites="Traçabilité slide reportée. Contre-analyse absente.",
             extraction_brute={"detected_round": "serie-a", "ask": "Levée de 8M EUR pour l'expansion EU."},
         ),
@@ -140,3 +133,12 @@ def test_render_markdown_sans_doctrine_inchange():
     md = render_markdown(make_memo())
     assert "Doctrine VC :" not in md
     assert "Critique générée par LLM" not in md
+
+
+def test_render_markdown_inventaire_absent_si_vide():
+    # Sans chiffre brut, la section 'ce que le deck affirme' ne doit pas apparaître.
+    memo = make_memo()
+    memo.chiffres_deck = []
+    md = render_markdown(memo)
+    assert "## Ce que le deck affirme" not in md
+    assert "\n\n\n" not in md  # pas de ligne blanche parasite laissée par le bloc vide

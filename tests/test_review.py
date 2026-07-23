@@ -2,7 +2,7 @@
 
 from src.analysis import run_analysis
 from src.models import DeckSignals
-from src.review import _summarize, generate_review
+from src.review import _summarize, charger_these, generate_review
 from tests.test_build_memo_data import make_deck
 
 
@@ -36,3 +36,23 @@ def test_generate_review_none_si_echec():
 def test_generate_review_none_si_reponse_vide():
     fake = lambda client, model, messages: _Resp("   ")
     assert generate_review(None, make_deck(), _analysis(), complete=fake) is None
+
+
+def test_charger_these_ignore_les_commentaires(tmp_path):
+    # Un fichier qui n'a que des consignes en commentaire HTML = thèse vide.
+    p = tmp_path / "these.md"
+    p.write_text("<!-- consignes du gabarit -->\n", encoding="utf-8")
+    assert charger_these(p) == ""
+    # Du texte réel sous les commentaires est bien récupéré.
+    p.write_text("<!-- consignes -->\nOn ne finance que du B2B SaaS europeen.", encoding="utf-8")
+    assert "B2B SaaS europeen" in charger_these(p)
+
+
+def test_generate_review_injecte_la_these():
+    # La thèse fournie doit apparaître dans le prompt système envoyé au LLM.
+    captured = {}
+    def fake(client, model, messages):
+        captured["system"] = messages[0]["content"]
+        return _Resp("ok")
+    generate_review(None, make_deck(), _analysis(), complete=fake, these="Angle contrarian sur la fintech.")
+    assert "Angle contrarian sur la fintech." in captured["system"]

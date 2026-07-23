@@ -48,16 +48,21 @@ RÈGLE ABSOLUE : n'invente jamais. Si une donnée n'est PAS dans le deck, mets n
 Un null est une information (donnée absente), pas un défaut à combler.
 Clés de "signals" :
 - has_technical_founder : true/false/null. Au moins un fondateur au profil technique.
+- founder_domain_years : nombre ou null. Années d'expérience cumulées des fondateurs dans le secteur du projet. Déduis du parcours si non chiffré explicitement, sinon null.
+- founder_is_repeat : true/false/null. Au moins un fondateur a déjà créé une startup.
+- founder_prior_exit : true/false/null. Au moins un fondateur a déjà réalisé une sortie (rachat, IPO).
+- founder_unique_insight : true/false/null. Le deck articule un insight propre et non évident (angle contrariant, problème vécu de l'intérieur). false si le propos reste générique.
+- team_complete : true/false/null. L'équipe couvre les fonctions clés : tech ET business/go-to-market.
 - product_is_tech : true/false/null. Le coeur du produit est technique.
 - founder_ownership_pct : nombre ou null. % du capital détenu par les fondateurs.
-- pre_money_valuation : nombre ou null. Valorisation pre-money annoncée pour ce tour, montant brut (ne convertis pas).
+- pre_money_valuation : nombre ou null. Valorisation pre-money annoncée pour ce tour, en unités entières (développe l'échelle : "20M" -> 20000000). Ne convertis JAMAIS la devise.
 - pre_money_currency : "EUR" | "USD" | "GBP" | null. Devise de la valorisation ci-dessus.
 - new_option_pool_pct : nombre ou null. Option pool créé au tour, en % du post-money.
 - liquidation_prefs : liste d'objets ou []. Chaque préférence connue : {"name", "invested" (montant), "multiple" (ex: 1.0), "participating" (true/false), "as_converted_pct", "seniority" (entier)}. Presque toujours absent d'un pitch deck : mets [] si non mentionné.
 - slide_sources : objet ou {}. Pour chaque signal chiffré que tu renseignes, indique le numéro de slide (1 = première slide) d'où vient l'information, ex: {"revenue_amount": 7, "runway_months": 12}. Omets les signaux non renseignés. Ne devine pas un numéro : si tu n'es pas sûr, ne mets pas la clé.
 - tam_methodology : "top-down" | "bottom-up" | "both" | null. Méthode de calcul du TAM.
 - has_why_now : true/false/null. Le deck justifie explicitement le 'why now'.
-- revenue_amount : nombre ou null. Revenu ou ARR annuel, montant brut tel qu'écrit (ne convertis pas).
+- revenue_amount : nombre ou null. Revenu ou ARR annuel, en unités entières. DÉVELOPPE l'échelle : "1,2M" -> 1200000, "800k" -> 800000. Ne convertis JAMAIS la devise (garde USD en USD). Méfie-toi des axes de graphiques légendés en milliers/millions : "Revenue ($M)" avec une barre à 1 vaut 1000000, pas 1. Si tu ne peux pas fixer l'échelle avec certitude, mets null.
 - revenue_currency : "EUR" | "USD" | "GBP" | null. Devise du revenu ci-dessus.
 - growth_rate_pct : nombre ou null. Taux de croissance en %.
 - growth_period : "MoM" | "YoY" | null. Période de la croissance.
@@ -67,6 +72,10 @@ Clés de "signals" :
 - burn_multiple : nombre ou null. Burn multiple.
 - runway_months : nombre ou null. Runway restant en mois.
 - customer_concentration_top1_pct : nombre ou null. % du revenu venant du plus gros client.
+- ltv_cac_ratio : nombre ou null. Rapport LTV / CAC (ex: 3.0 pour un ratio 3:1). Si le deck donne LTV et CAC séparément, calcule le rapport. null si aucun des deux.
+- cac_payback_months : nombre ou null. Délai de récupération du CAC, en mois.
+- gross_margin_pct : nombre ou null. Marge brute en %.
+- chiffres_bruts : liste d'objets ou []. INVENTAIRE de TOUS les chiffres marquants du deck, captés tels qu'écrits, y compris ceux sans champ dédié ci-dessus (CAGR, NPS, panier moyen, LTV, CAC, nombre d'utilisateurs, TAM...). Chaque objet : {"libelle" (nom tel qu'écrit, ex "ARR", "CAGR"), "valeur" (nombre tel qu'écrit, sans développer l'échelle : "1,2M" -> valeur 1.2), "unite" (brut : "%", "M USD", "k EUR", "x", ou null), "periode" (ex "2024", "MoM", "2021-2024", ou null), "slide" (numéro de slide, ou null si incertain)}. Ici on ne normalise PAS et on ne jette rien : c'est la trace fidèle de ce que le deck affiche. Liste vide [] seulement si le deck ne contient aucun chiffre.
 
 RÈGLE DE COUPLAGE (impérative). Un taux sans sa période, ou un montant sans sa devise,
 est inutilisable. Ces champs vont par paires indissociables :

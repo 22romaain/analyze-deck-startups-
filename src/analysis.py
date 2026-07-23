@@ -8,19 +8,20 @@ appliquée à la main de la même façon pour chaque dossier.
 """
 
 from src.captable import LiquidationPref, RoundInput, compute_dilution, compute_waterfall
+from src.criteres import evaluer_criteres
 from src.models import (
-    DIMENSION_LABELS,
     AnalysisResult,
     DeckSignals,
-    DimensionScore,
+    Finding,
     RedFlag,
     parse_amount,
     revenue_in_eur,
 )
 
-# Poids de chaque dimension selon le round, tirés du référentiel (Partie 2).
-# La somme fait 1.0 par round. Les dimensions absentes d'un round ont un poids 0
-# (elles comptent pour l'affichage mais pas pour le score global).
+# Importance de chaque dimension selon le round, tirée du référentiel (Partie 2).
+# Ne sert plus à noter (le score a été retiré) : sert à ORDONNER l'affichage des
+# dimensions dans le mémo, les plus décisives du stade en tête. Une dimension absente
+# d'un round a une importance 0 (elle s'affiche après celles qui comptent au stade).
 ROUND_WEIGHTS: dict[str, dict[str, float]] = {
     "pre-seed": {
         "equipe": 0.40, "probleme": 0.25, "marche": 0.20, "solution": 0.10, "ask": 0.05,
@@ -46,17 +47,6 @@ ROUND_WEIGHTS: dict[str, dict[str, float]] = {
         "equipe": 0.10, "ask": 0.05,
     },
 }
-
-# Mécanique des red flags (référentiel §5.2), par plafonnement et non par soustraction.
-MINOR_PENALTY: float = 10.0          # MINEUR : -10 sur la dimension.
-MAJOR_DIMENSION_CAP: float = 40.0    # MAJEUR (ou pire) : plafonne la dimension à 40.
-GLOBAL_CRITICAL_CAP: float = 35.0    # CRITIQUE : plafonne le score global à 35.
-MAJORS_FOR_CRITICAL: int = 3         # Accumulation : 3 MAJEURS = 1 CRITIQUE.
-
-# Score de départ de chaque dimension avant ajustements.
-# 60 = neutre : ni preuve forte, ni alerte. Les bonus et pénalités font bouger.
-BASELINE_SCORE: float = 60.0
-
 
 # Rounds où une cap table est exigible : son absence devient un signal (§4.3).
 SERIES_A_PLUS_ROUNDS = {"serie-a", "serie-b", "serie-c", "growth"}
@@ -253,98 +243,14 @@ def detect_incoherences(signals: DeckSignals, round_name: str) -> list[RedFlag]:
     return flags
 
 
-# Plancher de revenu (en EUR) sous lequel un "revenu" est trop faible ou bruité pour
-# valoir preuve de traction. Garde contre les mauvaises extractions (ex: "1 USD").
-REVENUE_BONUS_FLOOR_EUR: float = 10_000.0
-
-
-def _positive_bonuses(signals: DeckSignals) -> dict[str, list[tuple[float, str]]]:
-    """Bonus par dimension quand un signal positif est présent.
-
-    Retourne un dict {dimension: [(points, explication), ...]}.
-    Séparé des red flags : ici on récompense les preuves, là on pénalise les alertes.
-    """
-    bonuses: dict[str, list[tuple[float, str]]] = {}
-
-    def add(dim: str, points: float, why: str) -> None:
-        bonuses.setdefault(dim, []).append((points, why))
-
-    if signals.has_technical_founder is True:
-        add("equipe", 15, "Profil technique présent dans l'équipe fondatrice.")
-    if signals.tam_methodology in ("bottom-up", "both"):
-        add("marche", 15, "TAM validé en bottom-up.")
-    if signals.has_why_now is True:
-        add("marche", 10, "'Why now' explicite.")
-    if signals.nrr_pct is not None and signals.nrr_pct >= 110:
-        add("business_model", 15, f"NRR à {signals.nrr_pct:.0f}%, expansion nette.")
-    if signals.burn_multiple is not None and signals.burn_multiple < 1.5:
-        add("business_model", 10, f"Burn multiple de {signals.burn_multiple:.1f}, capital efficace.")
-    if signals.churn_rate_pct is not None and (
-        (signals.churn_period == "monthly" and signals.churn_rate_pct < 2)
-        or (signals.churn_period == "annual" and signals.churn_rate_pct < 10)
-    ):
-        add("business_model", 10, f"Churn maîtrisé ({signals.churn_rate_pct:.1f}%).")
-    rev_eur = revenue_in_eur(signals.revenue_amount, signals.revenue_currency)
-    if rev_eur is not None and rev_eur >= REVENUE_BONUS_FLOOR_EUR:
-        currency = signals.revenue_currency or ""
-        add("traction", 10, f"Revenu établi ({signals.revenue_amount:,.0f} {currency}).".strip())
-    if signals.customer_concentration_top1_pct is not None and signals.customer_concentration_top1_pct <= 15:
-        add("traction", 5, "Base clients diversifiée.")
-    if signals.runway_months is not None and signals.runway_months >= 18:
-        add("financials", 10, f"Runway confortable ({signals.runway_months:.0f} mois).")
-
-    return bonuses
-
-
-def score_dimensions(
-    signals: DeckSignals, red_flags: list[RedFlag], round_name: str
-) -> list[DimensionScore]:
-    """Calcule un score 0-100 par dimension : baseline + bonus - pénalités."""
-    weights = ROUND_WEIGHTS.get(round_name, {})
-    bonuses = _positive_bonuses(signals)
-
-    scores: list[DimensionScore] = []
-    for dim, label in DIMENSION_LABELS.items():
-        score = BASELINE_SCORE
-        rationale: list[str] = [f"Base neutre : {BASELINE_SCORE:.0f}."]
-
-        for points, why in bonuses.get(dim, []):
-            score += points
-            rationale.append(f"+{points:.0f} : {why}")
-
-        # §5.2 : MINEUR retire des points ; MAJEUR/CRITIQUE plafonnent la dimension.
-        # Le plafond MAJEUR s'applique après les bonus (un bon dossier reste plafonné).
-        dimension_cap = 100.0
-        for flag in red_flags:
-            if flag.dimension != dim:
-                continue
-            if flag.severity == "MINEUR":
-                score -= MINOR_PENALTY
-                rationale.append(f"-{MINOR_PENALTY:.0f} [MINEUR] : {flag.message}")
-            else:  # MAJEUR ou CRITIQUE : plafonnement de la dimension à 40
-                dimension_cap = min(dimension_cap, MAJOR_DIMENSION_CAP)
-                rationale.append(f"plafond {MAJOR_DIMENSION_CAP:.0f} [{flag.severity}] : {flag.message}")
-
-        # On borne dans [0, 100] puis on applique le plafond de sévérité.
-        score = max(0.0, min(dimension_cap, score))
-
-        scores.append(DimensionScore(
-            dimension=dim, label=label, score=score,
-            weight=weights.get(dim, 0.0), rationale=rationale,
-        ))
-
-    return scores
-
-
 def detect_dilution_flag(
     signals: DeckSignals, round_name: str, ask_amount: str | None
 ) -> RedFlag | None:
     """Alerte si, après ce tour, la détention fondateurs passe sous le seuil du stade (§4.3).
 
-    Exige valo pre-money (donc devise, garantie par le couplage), part fondateurs, et un
-    montant levé parsable. Hypothèse : valo et montant dans la même devise (cas usuel d'un
-    deck) ; seul leur ratio compte pour la dilution, la devise s'annule. Termes incohérents
-    (>100% prélevé) : on n'invente pas d'alerte, on renonce.
+    Exige valo pre-money, part fondateurs, et un montant levé parsable. Hypothèse : valo
+    et montant dans la même devise (cas usuel d'un deck) ; seul leur ratio compte pour la
+    dilution, la devise s'annule. Termes incohérents (>100% prélevé) : on renonce.
     """
     threshold = FOUNDER_OWNERSHIP_MIN_BY_ROUND.get(round_name)
     if threshold is None or signals.pre_money_valuation is None or signals.founder_ownership_pct is None:
@@ -397,13 +303,13 @@ def detect_waterfall_flag(
     )
 
 
-def run_analysis(
+def collecter_red_flags(
     signals: DeckSignals, round_name: str, ask_amount: str | None = None
-) -> AnalysisResult:
-    """Point d'entrée du module : signaux + round (+ montant) -> résultat complet.
+) -> list[RedFlag]:
+    """Assemble tous les red flags déterministes : seuils, incohérences, dilution, waterfall.
 
-    C'est la seule fonction que l'interface a besoin d'appeler. ask_amount est
-    optionnel : sans lui, l'alerte de dilution est simplement absente.
+    Factorisé pour être réutilisé par le score (run_analysis) ET par la couche
+    qualitative (collecter_findings), sans dupliquer la logique cap table.
     """
     # Red flags classiques (chiffre vs seuil) + incohérences internes (chiffre vs chiffre).
     red_flags = detect_red_flags(signals, round_name)
@@ -413,30 +319,72 @@ def run_analysis(
         red_flags.append(dilution_flag)
 
     # Waterfall : n'a de sens que si des préférences sont connues (rare hors term sheet).
-    # Sortie de référence = post-money ; on approxime la part fondateurs à l'exit par leur
-    # détention actuelle (raffinable avec la dilution du tour plus tard).
+    # Sortie de référence = post-money. La part fondateurs à l'exit = leur détention APRÈS
+    # ce tour (post-dilution), pas leur détention actuelle : le waterfall porte sur un futur.
     amount = parse_amount(ask_amount) if ask_amount else None
     if signals.liquidation_prefs and signals.pre_money_valuation is not None \
             and signals.founder_ownership_pct is not None and amount is not None:
-        post_money = signals.pre_money_valuation + amount
-        waterfall_flag = detect_waterfall_flag(
-            signals.liquidation_prefs, signals.founder_ownership_pct, post_money)
-        if waterfall_flag is not None:
-            red_flags.append(waterfall_flag)
-    dimension_scores = score_dimensions(signals, red_flags, round_name)
+        try:
+            diluted = compute_dilution(RoundInput(
+                pre_money=signals.pre_money_valuation, amount=amount,
+                founder_pct_pre=signals.founder_ownership_pct,
+                new_option_pool_pct=signals.new_option_pool_pct or 0.0,
+            ))
+        except ValueError:
+            diluted = None
+        if diluted is not None:
+            waterfall_flag = detect_waterfall_flag(
+                signals.liquidation_prefs, diluted.founder_pct_post, diluted.post_money)
+            if waterfall_flag is not None:
+                red_flags.append(waterfall_flag)
+    return red_flags
 
-    # Score global = moyenne pondérée des dimensions par les poids du round.
-    global_score = sum(ds.score * ds.weight for ds in dimension_scores)
 
-    # §5.2 : un CRITIQUE (ou 3 MAJEURS accumulés = 1 CRITIQUE) plafonne le global à 35.
-    nb_critiques = sum(1 for f in red_flags if f.severity == "CRITIQUE")
-    nb_majeurs = sum(1 for f in red_flags if f.severity == "MAJEUR")
-    if nb_critiques >= 1 or nb_majeurs >= MAJORS_FOR_CRITICAL:
-        global_score = min(global_score, GLOBAL_CRITICAL_CAP)
+def run_analysis(
+    signals: DeckSignals, round_name: str, ask_amount: str | None = None
+) -> AnalysisResult:
+    """Point d'entrée déterministe : signaux + round (+ montant) -> round et red flags.
 
+    Depuis le pivot, ne calcule plus de score : rassemble les red flags déterministes
+    (seuils, incohérences, dilution, waterfall) et les livre avec le round. La couche
+    qualitative (collecter_findings) les reprend et les tague. ask_amount optionnel :
+    sans lui, l'alerte de dilution est simplement absente.
+    """
     return AnalysisResult(
         round=round_name,
-        global_score=global_score,
-        dimension_scores=dimension_scores,
-        red_flags=red_flags,
+        red_flags=collecter_red_flags(signals, round_name, ask_amount),
     )
+
+
+# Traduction de la sévérité d'un red flag vers une catégorie de constat qualitatif.
+# Choix assumé : CRITIQUE bloque (redhibitoire), MAJEUR est une faiblesse réelle,
+# MINEUR un simple point de vigilance. Modifiable si la doctrine évolue.
+_SEVERITE_VERS_CATEGORIE: dict[str, str] = {
+    "CRITIQUE": "redhibitoire",
+    "MAJEUR": "faiblesse",
+    "MINEUR": "vigilance",
+}
+
+
+def redflag_to_finding(flag: RedFlag) -> Finding:
+    """Convertit un red flag déterministe en constat tagué de la couche qualitative."""
+    return Finding(
+        dimension=flag.dimension,
+        categorie=_SEVERITE_VERS_CATEGORIE[flag.severity],
+        message=flag.message,
+        source="detecteur",
+    )
+
+
+def collecter_findings(
+    signals: DeckSignals, round_name: str, ask_amount: str | None = None
+) -> list[Finding]:
+    """Rassemble tous les constats du deck : détecteurs code + critères éditables (YAML).
+
+    Point d'entrée de l'analyse qualitative qui remplace le score chiffré. Les
+    constats des détecteurs (red flags, incohérences, cap table) et ceux des
+    critères YAML sont fusionnés en une seule liste, prête à trier en pros/cons.
+    """
+    findings = [redflag_to_finding(f) for f in collecter_red_flags(signals, round_name, ask_amount)]
+    findings += evaluer_criteres(signals, round_name)
+    return findings

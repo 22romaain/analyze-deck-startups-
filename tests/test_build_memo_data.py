@@ -24,7 +24,7 @@ def make_deck() -> DeckAnalysis:
 
 
 def test_build_memo_data_assemblage_complet():
-    # NRR à 80% -> red flag CRITIQUE -> verdict PASSER.
+    # NRR à 80% -> red flag CRITIQUE -> constat rédhibitoire.
     signals = DeckSignals(nrr_pct=80.0, churn_rate_pct=1.5, churn_period="monthly")
     analysis = run_analysis(signals, "serie-a")
     memo = build_memo_data(make_deck(), analysis, signals, CONFIG, today=date(2026, 7, 12))
@@ -33,12 +33,11 @@ def test_build_memo_data_assemblage_complet():
     assert memo.ask_amount == "8M EUR"
     assert memo.societe == CONFIG.societe_fallback
     assert memo.date == date(2026, 7, 12)
-    assert memo.verdict.decision == "PASSER"  # dominé par le red flag critique
     assert memo.contre_analyse.disponible is False
-    # Forces/faiblesses honnêtes : aucune preuve positive ici (forces vides),
-    # et seules les dimensions réellement pénalisées (< base) remontent en faiblesses.
-    assert memo.forces == []
-    assert memo.faiblesses and all(f.score < 60 for f in memo.faiblesses)
+    # Un rédhibitoire renvoie à APPROFONDIR (à instruire et justifier), jamais un rejet auto.
+    assert memo.synthese.recommandation.decision == "APPROFONDIR"
+    assert memo.synthese.recommandation.nb_redhibitoires >= 1
+    assert any(f.categorie == "redhibitoire" for f in memo.synthese.points_negatifs)
     assert memo.annexes.extraction_brute["detected_round"] == "serie-a"
 
     # Le mémo complet se rend sans exception et commence par le titre.

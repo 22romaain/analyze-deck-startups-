@@ -105,7 +105,9 @@ def main() -> None:
         print(f"Écriture du mémo impossible : {exc}")
         sys.exit(1)
 
-    print(f"\nVerdict : {memo.verdict.decision} (score {memo.verdict.score_global:.0f}/100)")
+    reco = memo.synthese.recommandation
+    print(f"\nRecommandation : {reco.decision} ({reco.nb_redhibitoires} rédhibitoire(s), "
+          f"{reco.nb_faiblesses} faiblesse(s), {reco.nb_atouts} atout(s))")
     print(f"Mémo Markdown : {md_path}")
     print(f"Mémo Word : {docx_path}")
 

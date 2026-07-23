@@ -9,10 +9,12 @@ from src.ingestion import load_deck
 from src.extraction import analyze_deck
 from src.analysis import run_analysis
 from src.main import _load_doctrine_retriever
-from src.models import DIMENSION_LABELS, ROUND_OPTIONS, check_round_coherence
+from src.models import ROUND_OPTIONS, check_round_coherence
 from src.output.memo_data import build_memo_data, load_memo_config
 from src.output.render_docx import render_docx_bytes
 from src.output.render_markdown import render_markdown
+from src.output.render_pdf import render_pdf_bytes
+from src.output.render_streamlit import render_memo
 from src.review import make_review_generator
 
 
@@ -51,6 +53,11 @@ if uploaded_file is not None:
         st.session_state["signals"] = signals
         st.session_state["mode"] = mode
 
+        # Un nouveau deck périme les mémos du précédent : sans ce nettoyage, on
+        # afficherait le mémo de l'ancienne société sous le nom de la nouvelle.
+        for key in [k for k in st.session_state if k.startswith(("memo_", "doctrine_"))]:
+            del st.session_state[key]
+
 # --- Affichage des résultats (persiste après le clic) ---
 if "analysis" in st.session_state:
     analysis = st.session_state["analysis"]
@@ -85,72 +92,64 @@ if "analysis" in st.session_state:
     # On passe ask_amount : nécessaire à l'alerte de dilution (cap table).
     result = run_analysis(signals, confirmed_round, analysis.ask_amount)
 
-    st.subheader("Score d'investissement")
-    st.metric("Score global (pondéré par le round)", f"{result.global_score:.0f} / 100")
-    st.caption("Score déterministe : calculé par du code à partir des signaux extraits, pas par le LLM.")
-
-    # Red flags, triés du plus grave au moins grave.
-    st.subheader("Red flags")
-    if not result.red_flags:
-        st.success("Aucun red flag déclenché par les signaux disponibles.")
-    else:
-        severity_order = {"CRITIQUE": 0, "MAJEUR": 1, "MINEUR": 2}
-        for flag in sorted(result.red_flags, key=lambda f: severity_order[f.severity]):
-            label = DIMENSION_LABELS.get(flag.dimension, flag.dimension)
-            line = f"**[{flag.severity}]** ({label}) {flag.message}"
-            if flag.severity == "CRITIQUE":
-                st.error(line)
-            elif flag.severity == "MAJEUR":
-                st.warning(line)
-            else:
-                st.info(line)
-
-    # Score par dimension : barre de progression + poids dans le round + trace du calcul.
-    st.subheader("Détail par dimension")
-    for ds in result.dimension_scores:
-        weight_txt = f"poids {ds.weight * 100:.0f}%" if ds.weight > 0 else "hors pondération"
-        st.markdown(f"**{ds.label}** — {ds.score:.0f}/100 ({weight_txt})")
-        st.progress(ds.score / 100)
-        with st.expander("Comment ce score est calculé"):
-            for line in ds.rationale:
-                st.write(line)
-
-    # --- Analyse narrative (le mémo texte du LLM) ---
-    st.subheader("Analyse détaillée (narratif)")
-
-    data = analysis.model_dump()
-    for key, label in DIMENSION_LABELS.items():
-        with st.expander(label):
-            st.write(data[key])
-
-    # --- Mémo d'investissement : génération + téléchargements ---
-    st.divider()
-    st.subheader("Mémo d'investissement")
-    st.caption("Assemble le mémo VC complet (verdict, dimensions, red flags, doctrine).")
-
-    if st.button("Générer le mémo VC"):
-        config = load_memo_config()
+    # --- Mémo : construit une fois par round, puis mémorisé dans la session ---
+    # Streamlit relance TOUT le script à chaque interaction avec un widget. Sans cette
+    # mémoire, le simple fait de dérouler le menu des rounds relancerait la contre-analyse
+    # LLM et les requêtes RAG, alors que le tier gratuit Mistral plafonne à 2 requêtes
+    # par minute. La clé porte le round : corriger le round reconstruit, revenir dessus
+    # ressort la version déjà calculée.
+    memo_key = f"memo_{confirmed_round}"
+    if memo_key not in st.session_state:
         retriever, doctrine_msg = _load_doctrine_retriever()
-        review_gen = make_review_generator()
-        with st.spinner("Construction du mémo (dont contre-analyse LLM)..."):
-            review = review_gen(analysis, result) if review_gen else None
-            memo = build_memo_data(analysis, result, signals, config, review=review, retriever=retriever)
-            st.session_state["memo_md"] = render_markdown(memo)
-            st.session_state["memo_docx"] = render_docx_bytes(memo)
-            st.session_state["memo_societe"] = memo.societe
-        st.caption(doctrine_msg)
+        review_generator = make_review_generator()
+        with st.spinner("Construction du mémo (doctrine et contre-analyse)..."):
+            review = review_generator(analysis, result) if review_generator else None
+            st.session_state[memo_key] = build_memo_data(
+                analysis, result, signals, load_memo_config(),
+                review=review, retriever=retriever,
+            )
+        st.session_state[f"doctrine_{confirmed_round}"] = doctrine_msg
 
-    if "memo_md" in st.session_state:
-        societe = st.session_state["memo_societe"].replace(" ", "_")
-        col_md, col_docx = st.columns(2)
-        col_md.download_button(
-            "Télécharger le mémo (.md)", st.session_state["memo_md"],
-            file_name=f"memo_{societe}.md", mime="text/markdown",
-        )
-        col_docx.download_button(
-            "Télécharger le mémo (.docx)", st.session_state["memo_docx"],
-            file_name=f"memo_{societe}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-        with st.expander("Aperçu du mémo"):
-            st.markdown(st.session_state["memo_md"])
+    memo = st.session_state[memo_key]
+
+    # --- Le mémo complet : la vue principale, pas un sous-produit ---
+    st.divider()
+    render_memo(memo)
+
+    # --- Exports, en bas de page une fois le mémo lu ---
+    st.divider()
+    st.subheader("Exporter le mémo")
+    societe = memo.societe.replace(" ", "_")
+    col_pdf, col_docx, col_md = st.columns(3)
+    col_pdf.download_button(
+        "PDF (.pdf)", render_pdf_bytes(memo),
+        file_name=f"memo_{societe}.pdf", mime="application/pdf", width="stretch",
+    )
+    col_docx.download_button(
+        "Word (.docx)", render_docx_bytes(memo),
+        file_name=f"memo_{societe}.docx", width="stretch",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    col_md.download_button(
+        "Markdown (.md)", render_markdown(memo),
+        file_name=f"memo_{societe}.md", mime="text/markdown", width="stretch",
+    )
+    st.caption(st.session_state.get(f"doctrine_{confirmed_round}", ""))
+
+    # --- Note de bas de page : la méthode qualitative et le cadre assumé ---
+    st.divider()
+    st.caption(
+        "**Méthode : une analyse, pas une note.** L'outil ne met plus de score sur 100. "
+        "Il produit des constats tagués (rédhibitoire, faiblesse, point de vigilance, "
+        "atout d'équipe, avantage compétitif, à creuser) et une recommandation qui en "
+        "découle. Un rédhibitoire renvoie à approfondir et à justifier, jamais à un rejet "
+        "automatique : c'est l'analyste qui tranche, pas la machine."
+    )
+    # On assume le cadre subjectif plutôt que de le maquiller en objectivité de marché.
+    st.caption(
+        "**Critères éditables et cadre assumé.** Les critères d'analyse vivent dans "
+        "config/criteres.yaml et se modifient à la main, sans toucher au code. L'analyse "
+        "reflète les critères et la thèse d'investissement subjectifs du créateur de "
+        "l'app, en complément des grands principes VC du référentiel (dossier courses/). "
+        "Ce n'est pas une vérité de marché."
+    )

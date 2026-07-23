@@ -3,10 +3,11 @@
 from src.models import DeckSignals
 
 
-def test_valo_sans_devise_est_rejetee():
-    # Une valorisation sans devise est inexploitable : les deux moitiés retombent à None.
+def test_valo_sans_devise_est_conservee():
+    # La valo pre-money n'est plus couplée à sa devise : la dilution ne dépend que du
+    # ratio montant/valo. On garde donc la valo même sans devise.
     s = DeckSignals(pre_money_valuation=8_000_000)
-    assert s.pre_money_valuation is None
+    assert s.pre_money_valuation == 8_000_000
     assert s.pre_money_currency is None
 
 

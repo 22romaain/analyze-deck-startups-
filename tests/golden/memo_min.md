@@ -4,73 +4,72 @@
 - **Montant recherché** : 8M EUR
 - **Date** : 2026-07-12
 
-## Verdict : APPROFONDIR
+> Analyse fondée sur les critères et la thèse d'investissement subjectifs du créateur de l'app, en complément des grands principes VC du référentiel (dossier courses/). Ce n'est pas une vérité de marché : les seuils et priorités reflètent un cadre assumé.
 
-APPROFONDIR : score 58 dans [40, 65].
+## Recommandation : APPROFONDIR
 
-- Score global : **58/100**
-- Red flags : 0 critique(s), 1 majeur(s)
+APPROFONDIR : 1 constat(s) rédhibitoire(s) à instruire et à justifier avant toute décision.
 
-## Recommandation
+- Rédhibitoires : 1 · Faiblesses : 0 · Atouts : 2
 
-### Forces
-- **Traction** — 82/100 : +10 : Revenu établi (200,000 EUR).
-- **Équipe** — 75/100 : +15 : Profil technique présent dans l'équipe fondatrice.
-- **Business Model** — 70/100 : +10 : Burn multiple de 1.2, capital efficace.
+## Synthèse
 
-### Faiblesses
-- **Marché** — 42/100 : TAM calculé uniquement en top-down, sans validation bottom-up.
-- **Concurrence** — 52/100 : Base neutre : 60.
-- **Go-to-Market** — 55/100 : Base neutre : 60.
+### Atouts
+- **Avantage compétitif** — Marge brute de 82%, dans la norme d'un modèle logiciel.
+- **Atout d'équipe / expertise** — Track record : au moins un fondateur a déjà réalisé une sortie.
 
-## Tableau de bord
+### Points négatifs
+- **Rédhibitoire** — LTV/CAC de 0.7 : destruction de valeur à chaque acquisition client.
+- **Point de vigilance** — Aucune méthode de dimensionnement du marché explicite.
 
-| Métrique | Valeur | Statut | Benchmark | Source |
-| --- | --- | --- | --- | --- |
-| ARR | 200 000 EUR | Dans la norme | 2,5-3,5M USD | slide 5 |
-| Churn | 2%/mois | Top quartile | < 2%/mois | — |
-| Burn multiple | — | Absent | ~1,2x | — |
-| NRR | 105% | Non évaluable | — | — |
+## Grille d'attendus
+
+| Attendu | Statut | Valeur | Criticité |
+| --- | --- | --- | --- |
+| ARR | Présent | 200 000 EUR | MAJEUR |
+| Churn ou rétention | Inconnu | — | MAJEUR |
+| Cap table (part fondateurs) | Inconnu | — | MINEUR |
+
+## Ce que le deck affirme
+
+| Métrique | Valeur | Période | Source |
+| --- | --- | --- | --- |
+| CAGR | 140 % | 2021-2024 | slide 7 |
+| NPS | 62 | — | — |
 
 ## Analyse par dimension
 
-### Traction — 82/100 (grade A, poids 30%)
+### Business Model
 
-Règles appliquées :
-- Base neutre : 60.
-- +10 : Revenu établi (200,000 EUR).
+Constats :
+- **Rédhibitoire** — LTV/CAC de 0.7 : destruction de valeur à chaque acquisition client.
+- **Avantage compétitif** — Marge brute de 82%, dans la norme d'un modèle logiciel.
 
-Red flags :
-- [MINEUR] Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.
+### Équipe
 
-### Business Model — 70/100 (grade B, poids 20%)
+Constats :
+- **Atout d'équipe / expertise** — Track record : au moins un fondateur a déjà réalisé une sortie.
 
-Règles appliquées :
-- Base neutre : 60.
-- +10 : Burn multiple de 1.2, capital efficace.
+## Incohérences internes
 
-## Red flags
-
-| Sévérité | Dimension | Message |
-| --- | --- | --- |
-| MAJEUR | Marché | TAM calculé uniquement en top-down, sans validation bottom-up. |
-| MINEUR | Traction | Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a. |
-
-### Incohérences internes
-- [MINEUR] Traction : Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.
-
-## Données manquantes
-
-- **Cap table (part fondateurs)** (MINEUR) : Donnée secondaire attendue au stade serie-a et absente du deck. L'absence d'une donnée est un signal, pas un neutre (référentiel §1.1).
+- **Point de vigilance** — Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.
 
 ## Contre-analyse
 
 > Contre-analyse indisponible (erreur API).
 
+## Cap table et dilution
+
+- **Pre-money** : 24,0M
+- **Montant levé** : 8,0M
+- **Post-money** : 32,0M
+- **Nouvel investisseur** : 25%
+- **Fondateurs** : 60% → **45%** (dilution de 15 pts)
+
 ## Annexes
 
 ### Méthodologie
-Trois couches : extraction LLM vision, scoring déterministe, mise en forme.
+Trois couches : extraction LLM vision, analyse déterministe en constats, mise en forme.
 
 ### Limites
 Traçabilité slide reportée. Contre-analyse absente.

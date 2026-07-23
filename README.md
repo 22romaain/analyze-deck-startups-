@@ -39,6 +39,47 @@ from src.rag.index import build_index
 build_index("courses")
 ```
 
+## Système de notation
+
+Chaque dimension est notée sur 100. Tout part d'une **base neutre de 60/100**
+(`BASELINE_SCORE` dans `src/analysis.py`). Ce 60 n'est pas arbitraire : c'est le
+point de départ « ni preuve forte, ni alerte ». Un deck qui ne dit rien de
+remarquable sur une dimension la laisse à 60. Les bonus et les pénalités font
+ensuite bouger la note à partir de là.
+
+**Pourquoi 60 et pas 50 ?** La grille du référentiel
+(`criteria/criteres_analyse_vc.md`) définit quatre paliers par dimension :
+Excellent (80-100), **Bon (60-79)**, Moyen (40-59), Faible (0-39). 60 n'est donc
+pas le milieu de l'échelle : c'est le **plancher du palier « Bon »**. Le choix
+encode un léger bénéfice du doute : un deck qui arrive jusqu'au pitch est présumé
+« correct » par défaut, à charge pour les red flags et les données manquantes de
+le faire descendre vers « Moyen » ou « Faible ». Partir de 50 reviendrait à le
+présumer médiocre. Ce 60 est aussi cohérent avec le verdict : une dimension
+neutre laisse le deck en zone `APPROFONDIR` (creuser), pas près du rejet.
+
+- **Bonus** : une preuve positive dans le deck (ex : profil technique dans
+  l'équipe, revenu établi) ajoute des points au-dessus de 60.
+- **Red flags, par plafonnement et non par soustraction** (référentiel §5.2) :
+  - `MINEUR` : -10 sur la dimension.
+  - `MAJEUR` : plafonne la dimension à 40.
+  - `CRITIQUE` (ou 3 `MAJEURS` cumulés) : plafonne le **score global** à 35.
+
+Le **score global** est la moyenne des dimensions pondérée par les poids du round
+(les poids changent selon le stade : la traction pèse lourd en série A, l'équipe
+au pre-seed). Il est ensuite traduit en grade lisible :
+
+| Score | Grade |
+| --- | --- |
+| ≥ 80 | A |
+| ≥ 65 | B |
+| ≥ 50 | C |
+| ≥ 40 | D |
+| < 40 | E |
+
+Enfin le **verdict** : `PASSER` sous 40 (ou dès un red flag critique),
+`POURSUIVRE` au-dessus de 65 sans critique, `APPROFONDIR` entre les deux. Tous ces
+seuils vivent dans `config/memo_config.json`, jamais codés en dur.
+
 ## Architecture
 
 Modules séparés, chacun testable seul :

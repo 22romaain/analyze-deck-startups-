@@ -1,52 +1,42 @@
 """Agrégat du mémo et logique de préparation (couche déterministe).
 
-Toute la logique de calcul du mémo vit ici : verdict, tri, sélection. Les
-renderers (markdown, docx) ne font que mettre en forme ce que ce module produit.
-Analogie : ce fichier est l'onglet de calcul du modèle, les renderers sont les
-mises en page d'impression.
+Toute la logique de préparation du mémo vit ici : collecte des constats, synthèse,
+grille, sections par dimension. Les renderers (markdown, docx, pdf, streamlit) ne font
+que mettre en forme ce que ce module produit. Analogie : ce fichier est l'onglet de
+calcul du modèle, les renderers sont les mises en page d'impression.
 
-Tranche 1 : chargement/validation de la config + calcul du verdict.
+Depuis le pivot, aucun score : l'analyse est qualitative (constats tagués).
 """
 
+import re
 from datetime import date
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError
 
-from src.analysis import (
-    BASELINE_SCORE,
-    GLOBAL_CRITICAL_CAP,
-    MAJOR_DIMENSION_CAP,
-    MAJORS_FOR_CRITICAL,
-    MINOR_PENALTY,
-    ROUND_WEIGHTS,
+from src.analysis import ROUND_WEIGHTS, collecter_findings
+from src.captable import (
+    DilutionResult,
+    RoundInput,
+    WaterfallResult,
+    compute_dilution,
+    compute_waterfall,
 )
 from src.models import (
     DIMENSION_LABELS,
+    FINDING_CATEGORIES,
     AnalysisResult,
     DeckAnalysis,
     DeckSignals,
-    DimensionScore,
-    RedFlag,
+    Finding,
     Severity,
+    parse_amount,
 )
+from src.output.synthese import Synthese, build_synthese
 
 
 # --- Config du mémo (typée et validée au chargement) ---
-
-class GradeBand(BaseModel):
-    """Une tranche de grade : score >= min -> grade (ex: >=80 -> 'A')."""
-    min: float
-    grade: str
-
-
-class VerdictConfig(BaseModel):
-    """Seuils du verdict, jamais codés en dur : ils vivent dans le JSON."""
-    seuil_bas: float
-    seuil_haut: float
-    majeurs_pour_approfondir: int
-
 
 class AttenduSignal(BaseModel):
     """Un signal typé attendu à un stade donné (§5.4). Son absence est un signal."""
@@ -55,39 +45,13 @@ class AttenduSignal(BaseModel):
     criticite: Severity
 
 
-class BenchmarkBand(BaseModel):
-    """Bornes de comparaison d'une métrique. Le sens (plus bas ou plus haut = mieux)
-    se déduit de l'ordre : si top <= norme, plus bas est meilleur (ex: churn) ;
-    sinon plus haut est meilleur (ex: runway). On n'invente jamais une borne absente."""
-    top: float     # seuil du top quartile
-    norme: float   # seuil de la norme acceptable
-    unite: str = ""
-
-
 class MemoConfig(BaseModel):
-    """Config complète du mémo. Les invariants métier sont vérifiés ci-dessous."""
-    verdict: VerdictConfig
-    grades: list[GradeBand]
+    """Config du mémo. Depuis le pivot, seuls les attendus par round et le nom de repli
+    servent (le verdict et les grades chiffrés ont disparu). Les clés en trop dans le
+    JSON (verdict, grades, benchmarks) sont simplement ignorées."""
     societe_fallback: str
     attendus_par_round: dict[str, list[AttenduSignal]]
-    benchmarks_par_round: dict[str, dict[str, BenchmarkBand]] = Field(default_factory=dict)
     version_referentiel: str
-
-    @model_validator(mode="after")
-    def _check_coherence(self) -> "MemoConfig":
-        v = self.verdict
-        if not v.seuil_bas < v.seuil_haut:
-            raise ValueError(
-                f"seuil_bas ({v.seuil_bas}) doit être strictement < seuil_haut ({v.seuil_haut})."
-            )
-        if v.majeurs_pour_approfondir < 1:
-            raise ValueError("majeurs_pour_approfondir doit être >= 1.")
-        mins = [g.min for g in self.grades]
-        if mins != sorted(mins, reverse=True) or len(set(mins)) != len(mins):
-            raise ValueError("Les grades doivent être triés strictement décroissants sur 'min'.")
-        if not self.grades or self.grades[-1].min != 0:
-            raise ValueError("Le dernier grade doit avoir min == 0 (borne plancher).")
-        return self
 
 
 # Racine du projet : memo_data.py est dans src/output/, donc deux niveaux au-dessus.
@@ -107,97 +71,15 @@ def load_memo_config(path: Path | None = None) -> MemoConfig:
         raise ValueError(f"Config mémo invalide ({config_path}) :\n{exc}") from exc
 
 
-# --- Verdict (section 0 du mémo) ---
-
-Decision = Literal["PASSER", "APPROFONDIR", "POURSUIVRE"]
-
-
-class Verdict(BaseModel):
-    """Décision d'investissement déterministe, avec sa justification auditable."""
-    decision: Decision
-    justification: str
-    score_global: float
-    nb_critiques: int
-    nb_majeurs: int
-
-
-def compute_verdict(
-    global_score: float, red_flags: list[RedFlag], config: MemoConfig
-) -> Verdict:
-    """Calcule le verdict. Précédence : PASSER domine, puis POURSUIVRE, sinon APPROFONDIR.
-
-    Convention de borne : larges vers APPROFONDIR. Un score pile à seuil_bas ou
-    seuil_haut tombe dans APPROFONDIR (ni strictement <, ni strictement >).
-    """
-    v = config.verdict
-    nb_critiques = sum(1 for f in red_flags if f.severity == "CRITIQUE")
-    nb_majeurs = sum(1 for f in red_flags if f.severity == "MAJEUR")
-
-    if nb_critiques >= 1 or global_score < v.seuil_bas:
-        raisons: list[str] = []
-        if nb_critiques >= 1:
-            raisons.append(f"{nb_critiques} red flag(s) critique(s)")
-        if global_score < v.seuil_bas:
-            raisons.append(f"score {global_score:.0f} < {v.seuil_bas:.0f}")
-        decision: Decision = "PASSER"
-        justification = "PASSER : " + " et ".join(raisons) + "."
-    elif global_score > v.seuil_haut and nb_majeurs < v.majeurs_pour_approfondir:
-        decision = "POURSUIVRE"
-        justification = f"POURSUIVRE : score {global_score:.0f} > {v.seuil_haut:.0f} sans red flag critique."
-    else:
-        decision = "APPROFONDIR"
-        raisons = []
-        if v.seuil_bas <= global_score <= v.seuil_haut:
-            raisons.append(f"score {global_score:.0f} dans [{v.seuil_bas:.0f}, {v.seuil_haut:.0f}]")
-        if nb_majeurs >= v.majeurs_pour_approfondir:
-            raisons.append(f"{nb_majeurs} red flags majeurs")
-        justification = "APPROFONDIR : " + " ; ".join(raisons) + "."
-
-    return Verdict(
-        decision=decision,
-        justification=justification,
-        score_global=global_score,
-        nb_critiques=nb_critiques,
-        nb_majeurs=nb_majeurs,
-    )
-
-
 # --- Sous-modèles du mémo (structure, aucune logique) ---
 
-# Statuts possibles d'une ligne du tableau de bord (comparaison au benchmark).
-DashboardStatut = Literal[
-    "TOP_QUARTILE", "DANS_LA_NORME", "SOUS_LA_BARRE", "ABSENT", "NON_EVALUABLE"
-]
-
-
-class Reason(BaseModel):
-    """Une force ou une faiblesse : la dimension, son score, et la preuve qui l'appuie.
-
-    slide reste None tant que l'extraction ne capture pas la slide source (§7).
-    """
-    dimension: str
-    label: str
-    score: float
-    preuve: str
+class DeckFigureRow(BaseModel):
+    """Un chiffre brut du deck, mis en forme pour l'affichage (inventaire 'ce que le
+    deck affirme'). On ne juge pas, on restitue."""
+    libelle: str
+    valeur: str          # déjà formatée (valeur + unité), les renderers ne calculent pas
+    periode: str | None
     slide: int | None = None
-
-
-class DashboardRow(BaseModel):
-    """Une ligne du tableau de bord : une métrique attendue confrontée au benchmark."""
-    metrique: str
-    valeur: str | None
-    statut: DashboardStatut
-    benchmark: str | None
-    slide: int | None = None
-
-
-class RedFlagRow(BaseModel):
-    """Un red flag mis en forme pour le mémo, avec son libellé de dimension lisible."""
-    severity: Severity
-    dimension: str
-    label_dimension: str
-    message: str
-    est_incoherence: bool
 
 
 class DoctrineCitation(BaseModel):
@@ -211,33 +93,28 @@ class DoctrineCitation(BaseModel):
     distance: float
 
 
-class DimensionSection(BaseModel):
-    """Le bloc d'analyse d'une dimension : score, poids, grade, règles, red flags liés.
-
-    doctrine reste vide par défaut : la citation RAG est optionnelle, la couche mémo
-    se construit sans réseau tant qu'on ne l'alimente pas."""
-    dimension: str
-    label: str
-    score: float
-    weight: float
-    grade: str
-    regle_appliquee: list[str]  # = DimensionScore.rationale
-    red_flags_inline: list[RedFlagRow]
-    doctrine: list[DoctrineCitation] = Field(default_factory=list)
-
-
-class MissingData(BaseModel):
-    """Une donnée attendue au stade mais absente du deck (signal à None)."""
-    label: str
-    criticite: Severity
-    justification: str  # texte du référentiel, jamais généré
-
-
 class ReviewBlock(BaseModel):
     """La contre-analyse LLM. Porte le mode dégradé tant que la brique n'existe pas."""
     disponible: bool
     bandeau: str
     contenu: str | None
+
+
+class CapTableSection(BaseModel):
+    """Section cap table du mémo : dilution du tour, et waterfall de sortie si connu.
+
+    Réutilise les modèles du moteur (DilutionResult, WaterfallResult) comme sous-objets.
+    calculable = False quand un terme indispensable manque (valo pre-money, part
+    fondateurs, montant levé) : on liste alors ce qui manque plutôt que d'inventer
+    des chiffres. waterfall reste None hors term sheet (liquidation prefs inconnues).
+    """
+    calculable: bool
+    donnees_absentes: list[str]          # termes manquants qui bloquent le calcul
+    pre_money: float | None
+    amount: float | None
+    founder_pct_pre: float | None
+    dilution: DilutionResult | None
+    waterfall: WaterfallResult | None
 
 
 class Annexes(BaseModel):
@@ -247,124 +124,13 @@ class Annexes(BaseModel):
     extraction_brute: dict
 
 
-class MemoData(BaseModel):
-    """Agrégat complet du mémo. Tous les champs sont requis : un mémo partiel échoue
-    à la construction en nommant le champ manquant, plutôt que de sortir faux."""
-    societe: str
-    round: str
-    ask_amount: str
-    date: date
-    verdict: Verdict
-    forces: list[Reason]
-    faiblesses: list[Reason]
-    dashboard: list[DashboardRow]
-    dimensions: list[DimensionSection]
-    red_flags: list[RedFlagRow]
-    incoherences: list[RedFlagRow]
-    donnees_manquantes: list[MissingData]
-    contre_analyse: ReviewBlock
-    annexes: Annexes
-
-
-# --- Recommandation (section 1 du mémo) : sélection déterministe ---
-
-def _positive_evidence(rationale: list[str]) -> str:
-    """Meilleure preuve positive d'une dimension : la première ligne de bonus.
-
-    Le rationale liste les ajustements (ex: '+15 : Profil technique...'). À défaut
-    de bonus, on renvoie la dernière ligne (souvent la base neutre).
-    """
-    for line in rationale:
-        if line.startswith("+"):
-            return line
-    return rationale[-1] if rationale else ""
-
-
-def _negative_evidence(rationale: list[str]) -> str:
-    """Preuve négative d'une dimension : la première ligne de pénalité ('-...')."""
-    for line in rationale:
-        if line.startswith("-"):
-            return line
-    return rationale[-1] if rationale else ""
-
-
-def select_forces(
-    dimension_scores: list["DimensionScore"], count: int = 3
-) -> list[Reason]:
-    """Les meilleures dimensions du round (poids > 0), triées de façon stable.
-
-    Départage documenté (§6.1) : score décroissant, puis poids du round décroissant,
-    puis ordre alphabétique de la dimension. Renvoie au plus `count` forces ; moins
-    si peu de dimensions dépassent la base. Une dimension à la base neutre (score
-    == BASELINE) n'est pas une force : seules celles avec une vraie preuve positive
-    (score > BASELINE) comptent.
-    """
-    eligibles = [d for d in dimension_scores if d.weight > 0 and d.score > BASELINE_SCORE]
-    ranked = sorted(eligibles, key=lambda d: (-d.score, -d.weight, d.dimension))
-    return [
-        Reason(dimension=d.dimension, label=d.label, score=d.score,
-               preuve=_positive_evidence(d.rationale))
-        for d in ranked[:count]
-    ]
-
-
-def select_faiblesses(
-    dimension_scores: list["DimensionScore"],
-    red_flags: list[RedFlag],
-    count: int = 3,
-) -> list[Reason]:
-    """Faiblesses par priorité : red flags CRITIQUE, puis MAJEUR, puis dimensions
-    aux plus faibles scores. Une dimension déjà remontée n'est pas répétée.
-    """
-    by_dim = {d.dimension: d for d in dimension_scores}
-    reasons: list[Reason] = []
-    seen: set[str] = set()
-
-    # 1-2. Red flags, CRITIQUE avant MAJEUR (tri stable : ordre d'origine préservé).
-    severity_rank = {"CRITIQUE": 0, "MAJEUR": 1}
-    flags = sorted(
-        (f for f in red_flags if f.severity in severity_rank),
-        key=lambda f: severity_rank[f.severity],
-    )
-    for f in flags:
-        if f.dimension in seen:
-            continue
-        d = by_dim.get(f.dimension)
-        reasons.append(Reason(
-            dimension=f.dimension,
-            label=d.label if d else DIMENSION_LABELS.get(f.dimension, f.dimension),
-            score=d.score if d else 0.0,
-            preuve=f.message,
-        ))
-        seen.add(f.dimension)
-        if len(reasons) >= count:
-            return reasons
-
-    # 3. Dimensions du round réellement faibles (score < base). Une dimension à la
-    # base neutre (60) n'est pas une faiblesse : on ne remonte que les pénalisées.
-    weak = sorted(
-        (d for d in dimension_scores if d.weight > 0 and d.score < BASELINE_SCORE),
-        key=lambda d: (d.score, -d.weight, d.dimension),
-    )
-    for d in weak:
-        if d.dimension in seen:
-            continue
-        reasons.append(Reason(dimension=d.dimension, label=d.label, score=d.score,
-                              preuve=_negative_evidence(d.rationale)))
-        seen.add(d.dimension)
-        if len(reasons) >= count:
-            break
-    return reasons
-
-
-# --- Tableau de bord (section 2) ---
-
-def _grade_for(score: float, config: MemoConfig) -> str:
-    """Traduit un score en grade via les bornes de la config (triées décroissantes)."""
-    for band in config.grades:
-        if score >= band.min:
-            return band.grade
-    return config.grades[-1].grade  # filet : le dernier a min == 0
+# Disclaimer affiché en tête du mémo : l'analyse n'est pas une vérité de marché mais
+# le cadre assumé du créateur, en plus des grands principes VC du référentiel.
+DISCLAIMER = (
+    "Analyse fondée sur les critères et la thèse d'investissement subjectifs du créateur "
+    "de l'app, en complément des grands principes VC du référentiel (dossier courses/). "
+    "Ce n'est pas une vérité de marché : les seuils et priorités reflètent un cadre assumé."
+)
 
 
 def _format_signal_value(signal: str, signals: DeckSignals) -> str | None:
@@ -391,46 +157,43 @@ def _format_signal_value(signal: str, signals: DeckSignals) -> str | None:
     return str(value)
 
 
-def _dashboard_status(
-    signal: str, signals: DeckSignals, config: MemoConfig, round_name: str
-) -> DashboardStatut:
-    """Statut d'une métrique : absente, non évaluable (pas de benchmark), ou comparée."""
-    value = getattr(signals, signal)
-    if value is None:
-        return "ABSENT"
-    bench = config.benchmarks_par_round.get(round_name, {}).get(signal)
-    if bench is None:
-        return "NON_EVALUABLE"
-    # Le benchmark churn est mensuel : un churn annuel n'est pas comparable ici.
-    if signal == "churn_rate_pct" and signals.churn_period != "monthly":
-        return "NON_EVALUABLE"
-    lower_is_better = bench.top <= bench.norme
-    if lower_is_better:
-        if value <= bench.top:
-            return "TOP_QUARTILE"
-        return "DANS_LA_NORME" if value <= bench.norme else "SOUS_LA_BARRE"
-    if value >= bench.top:
-        return "TOP_QUARTILE"
-    return "DANS_LA_NORME" if value >= bench.norme else "SOUS_LA_BARRE"
+# --- Grille d'attendus par round (présent / absent / inconnu) ---
+
+# Statut d'un attendu du stade. Dans l'esprit "l'absence est un signal" (§1.1),
+# mais on distingue le nié (booléen False) du tu (None) : ce n'est pas pareil.
+GrilleStatut = Literal["PRESENT", "ABSENT", "INCONNU"]
 
 
-def build_dashboard(
+class GrilleRow(BaseModel):
+    """Une ligne de la grille : ce que le stade exige, et si le deck le couvre.
+
+    PRESENT = le deck le renseigne ; ABSENT = explicitement nié (booléen à False) ;
+    INCONNU = le deck n'en dit rien (signal à None).
+    """
+    label: str
+    criticite: Severity
+    statut: GrilleStatut
+    valeur: str | None
+
+
+def build_grille(
     signals: DeckSignals, round_name: str, config: MemoConfig
-) -> list[DashboardRow]:
-    """Une ligne par signal attendu au stade : valeur formatée, statut, benchmark."""
-    benchmarks = config.benchmarks_par_round.get(round_name, {})
-    rows: list[DashboardRow] = []
+) -> list[GrilleRow]:
+    """Confronte chaque attendu du round au deck : présent, nié, ou inconnu."""
+    rows: list[GrilleRow] = []
     for attendu in config.attendus_par_round.get(round_name, []):
-        bench = benchmarks.get(attendu.signal)
-        benchmark_str = (
-            f"top {bench.top:g} / norme {bench.norme:g}{bench.unite}" if bench else None
-        )
-        rows.append(DashboardRow(
-            metrique=attendu.label,
+        value = getattr(signals, attendu.signal)
+        if value is None:
+            statut: GrilleStatut = "INCONNU"
+        elif value is False:
+            statut = "ABSENT"
+        else:
+            statut = "PRESENT"
+        rows.append(GrilleRow(
+            label=attendu.label,
+            criticite=attendu.criticite,
+            statut=statut,
             valeur=_format_signal_value(attendu.signal, signals),
-            statut=_dashboard_status(attendu.signal, signals, config, round_name),
-            benchmark=benchmark_str,
-            slide=signals.slide_sources.get(attendu.signal),
         ))
     return rows
 
@@ -462,6 +225,29 @@ DIMENSION_DOCTRINE_QUERY: dict[str, str] = {
 DOCTRINE_MAX_DISTANCE = 1.0
 
 
+def _aplatir_extrait(text: str) -> str:
+    """Réduit un passage de cours à une phrase citable, sans balisage.
+
+    Les cours sont écrits en Markdown : un passage brut porte des '**', des puces
+    et des retours à la ligne. Réinjecté tel quel dans le mémo (lui-même en
+    Markdown) ou dans un libellé Streamlit, ce balisage est réinterprété et casse
+    la mise en forme autour de la citation. On neutralise ici, une fois, plutôt que
+    dans chacun des quatre renderers : la citation est une donnée, pas une mise en page.
+    """
+    plat = " ".join(text.split())        # retours à la ligne et indentation
+    plat = plat.replace("*", "")         # gras et italique markdown
+    return re.sub(r"^[-•]\s*", "", plat)  # puce de tête
+
+
+def _couper_aux_mots(text: str, limite: int) -> str:
+    """Tronque sans casser le dernier mot. Une citation coupée en plein mot fait
+    douter de la source autant que du contenu."""
+    if len(text) <= limite:
+        return text
+    # limite - 1 : l'ellipse occupe un caractère, la borne reste respectée.
+    return text[:limite - 1].rsplit(" ", 1)[0] + "…"
+
+
 def cite_doctrine(
     query: str, k: int = 2, retriever=None, max_distance: float | None = None
 ) -> list[DoctrineCitation]:
@@ -480,7 +266,7 @@ def cite_doctrine(
         DoctrineCitation(
             source=hit.source,
             section=hit.section,
-            extrait=hit.text[:DOCTRINE_EXTRACT_CHARS].rstrip(),
+            extrait=_couper_aux_mots(_aplatir_extrait(hit.text), DOCTRINE_EXTRACT_CHARS),
             distance=hit.distance,
         )
         for hit in hits
@@ -488,132 +274,150 @@ def cite_doctrine(
     ]
 
 
-# --- Analyse par dimension, red flags, données manquantes (sections 3-4-5) ---
+# --- Analyse par dimension (récit du deck + constats, sans score) ---
 
-def _to_red_flag_row(flag: RedFlag) -> RedFlagRow:
-    """Convertit un RedFlag brut en ligne de mémo, avec libellé lisible et marquage
-    des incohérences internes (convention : message préfixé 'Incohérence interne')."""
-    return RedFlagRow(
-        severity=flag.severity,
-        dimension=flag.dimension,
-        label_dimension=DIMENSION_LABELS.get(flag.dimension, flag.dimension),
-        message=flag.message,
-        est_incoherence=flag.message.startswith("Incohérence interne"),
-    )
+class DimensionQualitative(BaseModel):
+    """Bloc d'analyse d'une dimension SANS score : le récit du deck et les constats.
+
+    narratif = ce que le deck raconte (texte du LLM). findings = les constats tagués
+    rattachés à cette dimension, triés par gravité. doctrine = citations RAG optionnelles.
+    Aucun score, poids ni grade : on ne note plus, on donne à lire.
+    """
+    dimension: str
+    label: str
+    narratif: str | None
+    findings: list[Finding]
+    doctrine: list[DoctrineCitation] = Field(default_factory=list)
 
 
-def build_dimensions(
-    analysis: AnalysisResult,
-    config: MemoConfig,
+def build_dimensions_qualitatives(
+    deck: DeckAnalysis,
+    findings: list[Finding],
+    round_name: str,
     retriever=None,
     doctrine_dimensions: set[str] | None = None,
-) -> list[DimensionSection]:
-    """Sections par dimension du round, triées par poids décroissant (départage alpha).
+) -> list[DimensionQualitative]:
+    """Une section par dimension : narratif du deck + constats rattachés + doctrine.
 
-    retriever optionnel (défaut None = aucun appel RAG, section construite hors ligne).
-    Quand un retriever est fourni : doctrine_dimensions None -> on cite toutes les
-    dimensions du round ; un ensemble -> on restreint à ces dimensions. Requête = label."""
-    weights = ROUND_WEIGHTS.get(analysis.round, {})
-    by_dim = {d.dimension: d for d in analysis.dimension_scores}
-    flags_by_dim: dict[str, list[RedFlag]] = {}
-    for f in analysis.red_flags:
-        flags_by_dim.setdefault(f.dimension, []).append(f)
+    Ordre : dimensions du round d'abord (ROUND_WEIGHTS, décroissant), puis les autres
+    par ordre alphabétique. ROUND_WEIGHTS ne sert plus qu'à ORDONNER l'affichage (les
+    dimensions décisives du stade en haut), plus à noter. Toutes les dimensions sont
+    affichées : chacune porte le récit du deck, même sans constat.
+    """
+    weights = ROUND_WEIGHTS.get(round_name, {})
+    findings_by_dim: dict[str, list[Finding]] = {}
+    for f in findings:
+        findings_by_dim.setdefault(f.dimension, []).append(f)
 
-    ordered = sorted(weights.keys(), key=lambda dim: (-weights[dim], dim))
-    sections: list[DimensionSection] = []
+    ordered = sorted(DIMENSION_LABELS, key=lambda d: (-weights.get(d, 0.0), d))
+    sections: list[DimensionQualitative] = []
     for dim in ordered:
-        d = by_dim.get(dim)
-        if d is None:
-            continue
         want_doctrine = retriever is not None and (
             doctrine_dimensions is None or dim in doctrine_dimensions
         )
-        # Requête ciblée par dimension (repli sur le libellé si non mappée).
-        query = DIMENSION_DOCTRINE_QUERY.get(dim, d.label)
+        query = DIMENSION_DOCTRINE_QUERY.get(dim, DIMENSION_LABELS[dim])
         cite = cite_doctrine(query, retriever=retriever) if want_doctrine else []
-        sections.append(DimensionSection(
-            dimension=dim, label=d.label, score=d.score, weight=d.weight,
-            grade=_grade_for(d.score, config), regle_appliquee=d.rationale,
-            red_flags_inline=[_to_red_flag_row(f) for f in flags_by_dim.get(dim, [])],
-            doctrine=cite,
+        dim_findings = sorted(
+            findings_by_dim.get(dim, []),
+            key=lambda f: FINDING_CATEGORIES[f.categorie]["ordre"],
+        )
+        sections.append(DimensionQualitative(
+            dimension=dim, label=DIMENSION_LABELS[dim],
+            narratif=getattr(deck, dim, None),
+            findings=dim_findings, doctrine=cite,
         ))
     return sections
-
-
-# Ordre d'affichage des red flags : le plus grave en premier.
-_SEVERITY_ORDER = {"CRITIQUE": 0, "MAJEUR": 1, "MINEUR": 2}
-
-
-def build_red_flag_rows(red_flags: list[RedFlag]) -> list[RedFlagRow]:
-    """Toutes les alertes en lignes de mémo, triées par sévérité décroissante (tri stable)."""
-    rows = [_to_red_flag_row(f) for f in red_flags]
-    return sorted(rows, key=lambda r: _SEVERITY_ORDER[r.severity])
-
-
-def filter_incoherences(rows: list[RedFlagRow]) -> list[RedFlagRow]:
-    """Sous-ensemble des lignes qui sont des incohérences internes."""
-    return [r for r in rows if r.est_incoherence]
-
-
-def _missing_justification(criticite: Severity, round_name: str) -> str:
-    """Justification d'une donnée manquante, ancrée sur la doctrine (jamais un jugement inventé)."""
-    poids = "critique" if criticite == "MAJEUR" else "secondaire"
-    return (
-        f"Donnée {poids} attendue au stade {round_name} et absente du deck. "
-        "L'absence d'une donnée est un signal, pas un neutre (référentiel §1.1)."
-    )
-
-
-def build_missing_data(
-    signals: DeckSignals, round_name: str, config: MemoConfig
-) -> list[MissingData]:
-    """Signaux attendus au stade dont la valeur est absente (None)."""
-    missing: list[MissingData] = []
-    for attendu in config.attendus_par_round.get(round_name, []):
-        if getattr(signals, attendu.signal) is None:
-            missing.append(MissingData(
-                label=attendu.label,
-                criticite=attendu.criticite,
-                justification=_missing_justification(attendu.criticite, round_name),
-            ))
-    return missing
 
 
 # --- Contre-analyse (section 6) ---
 
 # Bandeaux fixes : le mode dégradé et le mode disponible portent un message exact.
 REVIEW_BANDEAU_INDISPONIBLE = "Contre-analyse indisponible (erreur API)."
-REVIEW_BANDEAU_DISPONIBLE = "Critique générée par LLM. Non intégrée au score. Non reproductible."
+REVIEW_BANDEAU_DISPONIBLE = "Critique générée par LLM. Hors analyse déterministe. Non reproductible."
 
 
 def build_review_block(review_content: str | None = None) -> ReviewBlock:
-    """Section 6 : contre-analyse. None -> encart dégradé, le mémo se génère quand même.
-
-    Tant que la brique DevilsAdvocateReview n'existe pas, review_content reste None.
-    Le jour où elle produit un texte, on le passe ici et le bandeau bascule.
-    """
+    """Section 6 : contre-analyse. None -> encart dégradé, le mémo se génère quand même."""
     if review_content is None:
         return ReviewBlock(disponible=False, bandeau=REVIEW_BANDEAU_INDISPONIBLE, contenu=None)
     return ReviewBlock(disponible=True, bandeau=REVIEW_BANDEAU_DISPONIBLE, contenu=review_content)
 
 
+# --- Cap table et dilution (section 7) ---
+
+# Termes indispensables au calcul de dilution, avec leur libellé lisible.
+_CAPTABLE_REQUIRED = {
+    "pre_money": "Valorisation pre-money",
+    "founder_pct_pre": "Part des fondateurs au capital",
+    "amount": "Montant levé (l'ask)",
+}
+
+
+def build_captable_section(signals: DeckSignals, ask_amount: str | None) -> CapTableSection:
+    """Section cap table déterministe : dilution du tour, waterfall si prefs connues.
+
+    Aucun chiffre inventé : si un terme indispensable manque, calculable=False et on
+    liste les manques. Miroir de detect_dilution_flag/detect_waterfall_flag (même
+    hypothèse de sortie au post-money) pour que mémo et red flags concordent.
+    """
+    pre_money = signals.pre_money_valuation
+    founder_pct_pre = signals.founder_ownership_pct
+    amount = parse_amount(ask_amount) if ask_amount else None
+
+    present = {"pre_money": pre_money, "founder_pct_pre": founder_pct_pre, "amount": amount}
+    manquants = [lib for cle, lib in _CAPTABLE_REQUIRED.items() if present[cle] is None]
+    if manquants:
+        return CapTableSection(
+            calculable=False, donnees_absentes=manquants,
+            pre_money=pre_money, amount=amount, founder_pct_pre=founder_pct_pre,
+            dilution=None, waterfall=None,
+        )
+
+    try:
+        dilution = compute_dilution(RoundInput(
+            pre_money=pre_money, amount=amount, founder_pct_pre=founder_pct_pre,
+            new_option_pool_pct=signals.new_option_pool_pct or 0.0,
+        ))
+    except ValueError:
+        # Termes incohérents (>100% prélevé) : on renonce plutôt que sortir un faux chiffre.
+        return CapTableSection(
+            calculable=False,
+            donnees_absentes=["Termes du tour incohérents (investisseur + option pool > 100%)"],
+            pre_money=pre_money, amount=amount, founder_pct_pre=founder_pct_pre,
+            dilution=None, waterfall=None,
+        )
+
+    # Waterfall : seulement si des liquidation prefs sont connues (rare hors term sheet).
+    # Part fondateurs à l'exit = leur détention APRÈS ce tour (post-dilution), miroir exact
+    # de detect_waterfall_flag pour que mémo et red flag concordent.
+    waterfall = None
+    if signals.liquidation_prefs:
+        waterfall = compute_waterfall(
+            dilution.post_money, signals.liquidation_prefs, dilution.founder_pct_post)
+
+    return CapTableSection(
+        calculable=True, donnees_absentes=[],
+        pre_money=pre_money, amount=amount, founder_pct_pre=founder_pct_pre,
+        dilution=dilution, waterfall=waterfall,
+    )
+
+
 # --- Annexes (section 8) ---
 
 def build_annexes(deck: DeckAnalysis, config: MemoConfig, review_disponible: bool) -> Annexes:
-    """Méthodologie (3 couches + mécanique de scoring réelle), limites, extraction brute."""
+    """Méthodologie (approche qualitative, sans score), limites, extraction brute."""
     methodologie = (
-        "Trois couches : (1) extraction des slides par LLM vision, "
-        "(2) scoring déterministe sans LLM, (3) mise en forme du mémo. "
-        f"Score par dimension : base {BASELINE_SCORE:.0f}, plus bonus de preuve. "
-        f"Mécanique red flags (§5.2) : MINEUR -{MINOR_PENALTY:.0f} sur la dimension ; "
-        f"MAJEUR plafonne la dimension à {MAJOR_DIMENSION_CAP:.0f} ; CRITIQUE (ou "
-        f"{MAJORS_FOR_CRITICAL} MAJEURS accumulés) plafonne le score global à "
-        f"{GLOBAL_CRITICAL_CAP:.0f}. Score global = moyenne des dimensions pondérée par "
-        f"les poids du round. Référentiel : {config.version_referentiel}."
+        "Trois couches : (1) extraction des slides par LLM vision, (2) analyse "
+        "déterministe sans LLM produisant des constats tagués, à partir de critères "
+        "éditables (config/criteres.yaml) et de détecteurs de red flags, d'incohérences "
+        "et de cap table, (3) mise en forme du mémo. Pas de score chiffré : les constats "
+        "sont rangés par catégorie et la recommandation en découle (un rédhibitoire "
+        "renvoie à approfondir, jamais à un rejet automatique ; l'analyste tranche). "
+        f"Référentiel : {config.version_referentiel}."
     )
     limites = [
-        "Traçabilité slide partielle : le tableau de bord affiche la slide source (au mieux) ; les dimensions narratives ne sont pas encore tracées.",
-        "Benchmarks partiels : une métrique sans repère encodé est non évaluable.",
+        "Traçabilité slide partielle : les constats ne sont pas encore reliés à leur slide source.",
+        "Analyse fondée sur les critères subjectifs du créateur : à confronter au jugement de l'analyste.",
     ]
     if not review_disponible:
         limites.append("Contre-analyse LLM absente (brique non encore construite).")
@@ -622,6 +426,50 @@ def build_annexes(deck: DeckAnalysis, config: MemoConfig, review_disponible: boo
         limites=" ".join(limites),
         extraction_brute=deck.model_dump(),
     )
+
+
+def build_deck_figures(signals: DeckSignals) -> list[DeckFigureRow]:
+    """Met en forme l'inventaire brut du deck pour l'affichage (section 'ce que le deck
+    affirme'). Ne juge ni ne normalise : la valeur et l'unité sont recomposées telles
+    quelles ('140 %', '1,2 M USD'). Ordre d'extraction préservé (ordre du deck au mieux)."""
+    rows: list[DeckFigureRow] = []
+    for fig in signals.chiffres_bruts:
+        # valeur sans décimale superflue : 140.0 -> '140', 1.2 -> '1,2'.
+        nombre = f"{fig.valeur:g}".replace(".", ",")
+        valeur = f"{nombre} {fig.unite}".strip() if fig.unite else nombre
+        rows.append(DeckFigureRow(
+            libelle=fig.libelle, valeur=valeur, periode=fig.periode, slide=fig.slide,
+        ))
+    return rows
+
+
+# --- Agrégat complet et assemblage ---
+
+class MemoData(BaseModel):
+    """Agrégat complet du mémo pivoté (analyse qualitative, sans score).
+
+    Tous les champs sont requis : un mémo partiel échoue à la construction en nommant
+    le champ manquant, plutôt que de sortir faux. `synthese` remplace verdict + forces
+    + faiblesses ; `grille` remplace tableau de bord + données manquantes ; `dimensions`
+    ne portent plus de score.
+    """
+    societe: str
+    round: str
+    ask_amount: str
+    date: date
+    disclaimer: str
+    synthese: Synthese
+    grille: list[GrilleRow]
+    chiffres_deck: list[DeckFigureRow]
+    dimensions: list[DimensionQualitative]
+    incoherences: list[Finding]
+    contre_analyse: ReviewBlock
+    cap_table: CapTableSection
+    annexes: Annexes
+
+
+# Préfixe conventionnel d'un constat d'incohérence interne (posé par detect_incoherences).
+_INCOHERENCE_PREFIX = "Incohérence interne"
 
 
 def build_memo_data(
@@ -635,31 +483,29 @@ def build_memo_data(
     retriever=None,
     doctrine_dimensions: set[str] | None = None,
 ) -> MemoData:
-    """Assemble l'agrégat complet du mémo à partir des trois couches amont.
+    """Assemble l'agrégat du mémo qualitatif à partir des couches amont.
 
-    Ne calcule rien de nouveau : orchestre les sous-fonctions déjà testées et
-    laisse Pydantic vérifier que toutes les sections requises sont présentes.
-    `review` = contenu texte de la contre-analyse (None tant que la brique n'existe
-    pas). `societe` : nom extrait plus tard ; à défaut, fallback config.
-    `retriever` : source de doctrine RAG passée à build_dimensions (None = pas de
-    citation, mémo construit hors ligne).
+    Ne calcule rien de nouveau : collecte les constats (collecter_findings), les met
+    en synthèse, en grille et par dimension. `analysis` sert pour son round et alimente
+    la collecte via les red flags qu'il porte. `review` = contenu de la contre-analyse
+    (None tant que la brique n'existe pas). `retriever` = source de doctrine RAG (None =
+    mémo construit hors ligne).
     """
     day = today or date.today()
-    red_flag_rows = build_red_flag_rows(analysis.red_flags)
+    findings = collecter_findings(signals, analysis.round, deck.ask_amount)
     review_block = build_review_block(review)
     return MemoData(
         societe=societe or deck.company_name or config.societe_fallback,
         round=analysis.round,
         ask_amount=deck.ask_amount,
         date=day,
-        verdict=compute_verdict(analysis.global_score, analysis.red_flags, config),
-        forces=select_forces(analysis.dimension_scores),
-        faiblesses=select_faiblesses(analysis.dimension_scores, analysis.red_flags),
-        dashboard=build_dashboard(signals, analysis.round, config),
-        dimensions=build_dimensions(analysis, config, retriever, doctrine_dimensions),
-        red_flags=red_flag_rows,
-        incoherences=filter_incoherences(red_flag_rows),
-        donnees_manquantes=build_missing_data(signals, analysis.round, config),
+        disclaimer=DISCLAIMER,
+        synthese=build_synthese(findings),
+        grille=build_grille(signals, analysis.round, config),
+        chiffres_deck=build_deck_figures(signals),
+        dimensions=build_dimensions_qualitatives(deck, findings, analysis.round, retriever, doctrine_dimensions),
+        incoherences=[f for f in findings if f.message.startswith(_INCOHERENCE_PREFIX)],
         contre_analyse=review_block,
+        cap_table=build_captable_section(signals, deck.ask_amount),
         annexes=build_annexes(deck, config, review_block.disponible),
     )

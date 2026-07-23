@@ -1,0 +1,184 @@
+# ============================================================================
+# Critères d'analyse VC — fichier ÉDITABLE par le créateur de l'app.
+# ----------------------------------------------------------------------------
+# Chaque critère lit UN signal extrait du deck et produit un constat tagué
+# (un "Finding") s'il se déclenche. Tu peux ajouter, retirer ou modifier un
+# critère ici, sans toucher au code Python.
+#
+# Ce qui NE se règle PAS ici (déjà tenu par le code, ne pas dupliquer) : churn
+# selon la période, NRR, burn multiple, runway, concentration client, TAM
+# top-down, why now, fondateur technique sur produit tech, incohérences entre
+# chiffres, dilution et waterfall. Ces logiques sont croisées ou couplées à une
+# unité, trop fines pour ce format ; elles produisent leurs propres constats.
+#
+# Forme d'un critère :
+#   id         : identifiant unique et stable (sert à tracer la source du constat).
+#   dimension  : equipe | probleme | solution | marche | business_model |
+#                traction | concurrence | go_to_market | financials | ask
+#   categorie  : redhibitoire | vigilance | faiblesse |
+#                avantage_competitif | atout_equipe | a_creuser
+#   rounds     : liste des rounds concernés, ou le mot-clé "tous".
+#                Rounds valides : pre-seed, seed, serie-a, serie-b, serie-c, growth
+#   quand      : la condition sur le signal (voir les deux formes ci-dessous).
+#   message    : le texte du constat. {valeur} est remplacé par la valeur du signal
+#                (à n'utiliser que pour un signal chiffré, pas un booléen).
+#
+# La condition "quand" prend l'une de ces deux formes :
+#   1) présence / booléen :   signal: <nom>   est: vrai | faux | present | absent
+#        vrai    = le signal vaut True        faux   = le signal vaut False
+#        present = le signal est renseigné     absent = le signal est absent (inconnu)
+#        Rappel doctrine 1.1 : "faux" (nié) et "absent" (inconnu) sont différents.
+#   2) comparaison chiffrée : signal: <nom>   operateur: ">"   valeur: <nombre>
+#                             (opérateurs acceptés : >  >=  <  <=  ==  !=)
+#
+# Les seuils ci-dessous viennent de courses/criteres_analyse_vc.md (Partie 2).
+# Ce sont des points de départ : ajuste-les selon ta thèse.
+# ============================================================================
+
+criteres:
+
+  # ------------------------------------------------------------------------
+  # ÉQUIPE — décisive en pre-seed/seed (on parie sur les personnes)
+  # ------------------------------------------------------------------------
+
+  - id: equipe_repeat_founder
+    dimension: equipe
+    categorie: atout_equipe
+    rounds: [pre-seed, seed]
+    quand:
+      signal: founder_is_repeat
+      est: vrai
+    message: "Au moins un fondateur est un repeat founder."
+
+  - id: equipe_exit_precedente
+    dimension: equipe
+    categorie: atout_equipe
+    rounds: [pre-seed, seed, serie-a]
+    quand:
+      signal: founder_prior_exit
+      est: vrai
+    message: "Track record : au moins un fondateur a déjà réalisé une sortie."
+
+  - id: equipe_expertise_secteur
+    dimension: equipe
+    categorie: atout_equipe
+    rounds: [pre-seed, seed]
+    quand:
+      signal: founder_domain_years
+      operateur: ">="
+      valeur: 5
+    message: "Expertise sectorielle : {valeur} ans d'expérience dans le domaine."
+
+  - id: equipe_insight_present
+    dimension: equipe
+    categorie: atout_equipe
+    rounds: [pre-seed, seed]
+    quand:
+      signal: founder_unique_insight
+      est: vrai
+    message: "Insight propre et non évident articulé sur le marché."
+
+  - id: equipe_insight_absent
+    dimension: equipe
+    categorie: faiblesse
+    rounds: [pre-seed]
+    quand:
+      signal: founder_unique_insight
+      est: absent
+    message: "Pas d'insight propre articulé, attendu décisif en pre-seed."
+
+  - id: equipe_complete
+    dimension: equipe
+    categorie: atout_equipe
+    rounds: [pre-seed, seed]
+    quand:
+      signal: team_complete
+      est: vrai
+    message: "Équipe complète : fonctions tech et business couvertes."
+
+  - id: equipe_incomplete
+    dimension: equipe
+    categorie: faiblesse
+    rounds: [seed, serie-a]
+    quand:
+      signal: team_complete
+      est: faux
+    message: "Équipe incomplète : une fonction clé (tech ou business) manque."
+
+  # ------------------------------------------------------------------------
+  # BUSINESS MODEL / UNIT ECONOMICS — décisif en série A+ (efficacité prouvée)
+  # ------------------------------------------------------------------------
+
+  - id: unit_economics_ltv_cac_sain
+    dimension: business_model
+    categorie: avantage_competitif
+    rounds: [serie-a, serie-b, serie-c]
+    quand:
+      signal: ltv_cac_ratio
+      operateur: ">="
+      valeur: 3
+    message: "Ratio LTV/CAC de {valeur}, unit economics saines."
+
+  - id: unit_economics_ltv_cac_destruction
+    dimension: business_model
+    categorie: redhibitoire
+    rounds: [serie-a, serie-b, serie-c, growth]
+    quand:
+      signal: ltv_cac_ratio
+      operateur: "<"
+      valeur: 1
+    message: "LTV/CAC de {valeur} : destruction de valeur à chaque acquisition client."
+
+  - id: unit_economics_cac_payback_rapide
+    dimension: business_model
+    categorie: avantage_competitif
+    rounds: [serie-a, serie-b]
+    quand:
+      signal: cac_payback_months
+      operateur: "<="
+      valeur: 12
+    message: "Payback CAC en {valeur} mois, récupération rapide."
+
+  - id: unit_economics_cac_payback_lent
+    dimension: business_model
+    categorie: faiblesse
+    rounds: [serie-a, serie-b, serie-c]
+    quand:
+      signal: cac_payback_months
+      operateur: ">"
+      valeur: 24
+    message: "Payback CAC de {valeur} mois, capital immobilisé trop longtemps."
+
+  - id: marge_brute_saine
+    dimension: business_model
+    categorie: avantage_competitif
+    rounds: [serie-a, serie-b, serie-c, growth]
+    quand:
+      signal: gross_margin_pct
+      operateur: ">="
+      valeur: 70
+    message: "Marge brute de {valeur}%, dans la norme d'un modèle logiciel."
+
+  - id: marge_brute_faible
+    dimension: business_model
+    categorie: vigilance
+    rounds: [serie-b, serie-c, growth]
+    quand:
+      signal: gross_margin_pct
+      operateur: "<"
+      valeur: 40
+    message: "Marge brute de {valeur}%, faible pour le business model annoncé."
+
+  # ------------------------------------------------------------------------
+  # ASK — cohérence du tour
+  # ------------------------------------------------------------------------
+
+  - id: valo_pre_seed_elevee
+    dimension: ask
+    categorie: vigilance
+    rounds: [pre-seed]
+    quand:
+      signal: pre_money_valuation
+      operateur: ">"
+      valeur: 6000000
+    message: "Valorisation pre-money au-dessus des fourchettes habituelles d'un pre-seed."

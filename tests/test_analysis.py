@@ -1,40 +1,22 @@
 """Tests des règles déterministes de red flags (detect_red_flags), volet cap table §4.3."""
 
-from src.analysis import detect_dilution_flag, detect_red_flags, run_analysis
-from src.models import DeckSignals
+from src.analysis import (
+    collecter_findings,
+    detect_dilution_flag,
+    detect_red_flags,
+    redflag_to_finding,
+    run_analysis,
+)
+from src.models import DeckSignals, RedFlag
 
 
-def _score(result, dim):
-    return next(d.score for d in result.dimension_scores if d.dimension == dim)
-
-
-def test_majeur_plafonne_la_dimension_a_40():
-    # TAM top-down -> MAJEUR sur marche : la dimension est plafonnee a 40, bonus compris.
-    result = run_analysis(DeckSignals(tam_methodology="top-down", has_why_now=True), "serie-a")
-    assert _score(result, "marche") == 40.0
-
-
-def test_mineur_retire_dix_points():
-    # TAM absent hors pre-seed -> MINEUR sur marche : base 60 - 10 = 50.
-    result = run_analysis(DeckSignals(), "serie-a")
-    assert _score(result, "marche") == 50.0
-
-
-def test_critique_plafonne_le_global_a_35():
-    # Produit tech sans fondateur technique -> CRITIQUE : score global plafonne a 35.
-    result = run_analysis(DeckSignals(product_is_tech=True, has_technical_founder=False,
-                                      founder_ownership_pct=80.0), "serie-a")
-    assert result.global_score <= 35.0
-
-
-def test_trois_majeurs_plafonnent_le_global():
-    # 3 MAJEURS accumules = 1 CRITIQUE (§5.2) -> global plafonne a 35, sans aucun CRITIQUE.
+def test_trois_majeurs_detectes():
+    # marche (TAM top-down) + equipe (dilution) + traction (concentration) -> 3 MAJEURS.
     signals = DeckSignals(tam_methodology="top-down", founder_ownership_pct=30.0,
-                          customer_concentration_top1_pct=60.0)  # marche + equipe + traction
+                          customer_concentration_top1_pct=60.0)
     result = run_analysis(signals, "serie-a")
     assert sum(1 for f in result.red_flags if f.severity == "CRITIQUE") == 0
     assert sum(1 for f in result.red_flags if f.severity == "MAJEUR") >= 3
-    assert result.global_score <= 35.0
 
 
 def test_fondateurs_sous_seuil_seed_flag_majeur():
@@ -92,14 +74,25 @@ def test_dilution_sans_valo_pas_de_flag():
     assert detect_dilution_flag(signals, "serie-a", "10M EUR") is None
 
 
-def test_revenu_derisoire_ne_donne_pas_de_bonus():
-    # Bug reel Square : revenu extrait a 1 USD ne doit pas valoir "revenu etabli".
-    result = run_analysis(DeckSignals(revenue_amount=1.0, revenue_currency="USD"), "serie-a")
-    traction = next(d for d in result.dimension_scores if d.dimension == "traction")
-    assert not any("Revenu établi" in r for r in traction.rationale)
+# --- Couche qualitative : constats tagués (collecter_findings) ---
+
+def test_redflag_to_finding_mappe_les_severites():
+    assert redflag_to_finding(RedFlag(dimension="x", severity="CRITIQUE", message="m")).categorie == "redhibitoire"
+    assert redflag_to_finding(RedFlag(dimension="x", severity="MAJEUR", message="m")).categorie == "faiblesse"
+    assert redflag_to_finding(RedFlag(dimension="x", severity="MINEUR", message="m")).categorie == "vigilance"
 
 
-def test_vrai_revenu_donne_le_bonus():
-    result = run_analysis(DeckSignals(revenue_amount=200_000.0, revenue_currency="EUR"), "serie-a")
-    traction = next(d for d in result.dimension_scores if d.dimension == "traction")
-    assert any("Revenu établi" in r for r in traction.rationale)
+def test_collecter_findings_inclut_les_constats_des_detecteurs():
+    # Runway de 4 mois -> red flag CRITIQUE code -> constat redhibitoire dans la liste.
+    findings = collecter_findings(DeckSignals(runway_months=4.0), "serie-a")
+    redhibitoires = [f for f in findings if f.categorie == "redhibitoire"]
+    assert any(f.source == "detecteur" and "Runway" in f.message for f in redhibitoires)
+
+
+def test_collecter_findings_fusionne_code_et_yaml():
+    # Un signal purement YAML (exit fondateur) et un signal purement code (runway court)
+    # doivent tous deux ressortir, avec des sources distinctes.
+    signals = DeckSignals(founder_prior_exit=True, runway_months=4.0)
+    sources = {f.source for f in collecter_findings(signals, "serie-a")}
+    assert "detecteur" in sources
+    assert any(s.startswith("critere:") for s in sources)

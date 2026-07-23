@@ -15,7 +15,7 @@ from src.output.memo_data import MemoData
 from src.output.render_markdown import output_path, render_markdown
 
 
-def _is_table_separator(line: str) -> bool:
+def is_table_separator(line: str) -> bool:
     """Vrai pour une ligne de séparation de tableau markdown (ex: '| --- | --- |').
 
     Ces lignes n'ont pas de sens hors markdown : on les saute pour rester lisible.
@@ -28,7 +28,7 @@ def _build_document(memo: MemoData) -> Document:
     """Construit le Document Word brut (une ligne du Markdown = un paragraphe)."""
     doc = Document()
     for line in render_markdown(memo).splitlines():
-        if _is_table_separator(line):
+        if is_table_separator(line):
             continue
         doc.add_paragraph(line)
     return doc

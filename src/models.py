@@ -58,6 +58,23 @@ class DeckAnalysis(BaseModel):
     )
 
 
+class RawFigure(BaseModel):
+    """Un chiffre du deck capté tel quel, sans le forcer dans le schéma de notation.
+
+    Rôle distinct des champs typés de DeckSignals : ceux-ci sont le contrat de
+    scoring (peu de champs, unités normalisées), ceux-là sont l'inventaire fidèle
+    de ce que le deck affiche. Un CAGR, un NPS, un panier moyen n'ont pas de champ
+    de notation mais méritent d'être vus. On préserve l'échelle et l'unité brutes :
+    'valeur 1, unite "M USD"' reste rattrapable, là où un revenue_amount à 1 est
+    déjà détruit. Point de départ aussi pour la traçabilité slide (docs §7).
+    """
+    libelle: str = Field(description="Nom de la métrique tel qu'écrit (ex: 'ARR', 'CAGR', 'CAC').")
+    valeur: float = Field(description="Valeur numérique telle qu'écrite, sans développer l'échelle.")
+    unite: str | None = Field(default=None, description="Unité brute : '%', 'M USD', 'k EUR', 'x'... None si aucune.")
+    periode: str | None = Field(default=None, description="Période ou millésime associé (ex: '2024', 'MoM', '2021-2024'). None si aucun.")
+    slide: int | None = Field(default=None, description="Numéro de slide source (1 = première). None si incertain.")
+
+
 class DeckSignals(BaseModel):
     """Signaux factuels typés extraits du deck : la matière du scoring déterministe.
 
@@ -72,6 +89,23 @@ class DeckSignals(BaseModel):
     )
     product_is_tech: bool | None = Field(
         default=None, description="Le coeur du produit est technique (le différenciant repose sur de la tech). None si indéterminable."
+    )
+    # Qualité de l'équipe : décisif en pre-seed/seed, où l'on parie sur les personnes
+    # faute de traction. None = le deck ne permet pas de trancher (pas 'false par défaut').
+    founder_domain_years: float | None = Field(
+        default=None, description="Années d'expérience cumulées des fondateurs dans le secteur du projet (ex: 8.0). None si non déductible."
+    )
+    founder_is_repeat: bool | None = Field(
+        default=None, description="Au moins un fondateur a déjà créé une startup (repeat founder). None si indéterminable."
+    )
+    founder_prior_exit: bool | None = Field(
+        default=None, description="Au moins un fondateur a déjà réalisé une sortie (rachat, IPO). None si indéterminable."
+    )
+    founder_unique_insight: bool | None = Field(
+        default=None, description="Le deck articule un insight propre et non évident sur le marché (angle contrariant, expérience vécue du problème). None si absent ou générique."
+    )
+    team_complete: bool | None = Field(
+        default=None, description="L'équipe couvre les fonctions clés du projet (tech ET business/go-to-market). None si indéterminable."
     )
     founder_ownership_pct: float | None = Field(
         default=None, description="Part du capital détenue par les fondateurs, en pourcentage (ex: 55.0). None si absent."
@@ -92,6 +126,10 @@ class DeckSignals(BaseModel):
     slide_sources: dict[str, int] = Field(
         default_factory=dict,
         description="Traçabilité : pour chaque signal renseigné, le numéro de slide d'où il vient (au mieux)."
+    )
+    chiffres_bruts: list[RawFigure] = Field(
+        default_factory=list,
+        description="Inventaire de tous les chiffres du deck, captés tels quels (voir RawFigure). Complète les champs typés sans les remplacer."
     )
 
     # Marché
@@ -133,6 +171,17 @@ class DeckSignals(BaseModel):
     customer_concentration_top1_pct: float | None = Field(
         default=None, description="Part du revenu venant du plus gros client, en pourcentage (ex: 30.0). None si absent."
     )
+    # Unit economics : décisif en série A+, où l'on note l'efficacité du modèle, pas
+    # la promesse. Sans unité problématique (ratio, mois, %), donc pas de couplage.
+    ltv_cac_ratio: float | None = Field(
+        default=None, description="Rapport LTV / CAC (ex: 3.0 pour 3:1). None si absent ou non calculable depuis le deck."
+    )
+    cac_payback_months: float | None = Field(
+        default=None, description="Délai de récupération du CAC, en mois (ex: 14.0). None si absent."
+    )
+    gross_margin_pct: float | None = Field(
+        default=None, description="Marge brute en pourcentage (ex: 78.0). None si absente."
+    )
 
     @field_validator("slide_sources", mode="before")
     @classmethod
@@ -156,6 +205,25 @@ class DeckSignals(BaseModel):
         """Le LLM peut renvoyer null au lieu d'une liste vide : on retombe sur []."""
         return value if isinstance(value, list) else []
 
+    @field_validator("chiffres_bruts", mode="before")
+    @classmethod
+    def _drop_unusable_figures(cls, value: object) -> object:
+        """Jette les entrées sans libellé ou sans valeur numérique, sans faire échouer
+        l'extraction. Un chiffre brut sert de preuve visible : sans nom ni nombre, il
+        n'apporte rien. On tolère une liste imparfaite plutôt que de perdre tout l'inventaire."""
+        if not isinstance(value, list):
+            return []
+        usable = []
+        for item in value:
+            if not isinstance(item, dict) or item.get("libelle") in (None, ""):
+                continue
+            try:
+                float(item["valeur"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            usable.append(item)
+        return usable
+
     @model_validator(mode="after")
     def _enforce_couples(self) -> "DeckSignals":
         """Garantit qu'un taux/montant ne survit jamais sans son unité.
@@ -165,11 +233,12 @@ class DeckSignals(BaseModel):
         moitié d'une paire est présente, on remet LES DEUX à None. On jette la donnée
         incomplète plutôt que de deviner l'unité (deviner fausserait le jugement).
         """
+        # pre_money_valuation n'est PAS couplé à sa devise : la dilution ne dépend que
+        # du ratio montant/valo, la devise s'annule. On garde donc la valo même sans devise.
         couples = [
             ("churn_rate_pct", "churn_period"),
             ("growth_rate_pct", "growth_period"),
             ("revenue_amount", "revenue_currency"),
-            ("pre_money_valuation", "pre_money_currency"),
         ]
         for value_field, unit_field in couples:
             has_value = getattr(self, value_field) is not None
@@ -233,26 +302,59 @@ class RedFlag(BaseModel):
     message: str
 
 
-class DimensionScore(BaseModel):
-    """Score d'une dimension sur 100, avec la trace de son calcul.
+# --- Analyse qualitative (constats tagués, remplace le score chiffré) ---
 
-    rationale : la liste des ajustements appliqués (bonus, pénalités). C'est ce
-    qui rend le score auditable : on peut relire pourquoi il vaut ce qu'il vaut.
+# Catégories d'un constat. Trois polarités : ce qui plaide contre, ce qui plaide
+# pour, ce qui reste à éclaircir. Ces noms servent aussi de vocabulaire dans le
+# fichier de critères éditable (config/criteres.yaml) : l'utilisateur range chaque
+# critère dans l'une de ces catégories.
+FindingCategory = Literal[
+    "redhibitoire",         # bloquant à ce stade, tue le deal en l'état
+    "vigilance",            # à surveiller / creuser en due diligence, pas bloquant
+    "faiblesse",            # un attendu du round n'est pas rempli
+    "avantage_competitif",  # moat, différenciant défendable
+    "atout_equipe",         # founder-market fit, insight propre, expertise rare
+    "a_creuser",            # donnée manquante : ni bon ni mauvais, question à poser
+]
+
+
+class Finding(BaseModel):
+    """Un constat qualitatif tagué : l'atome de l'analyse qui remplace la note.
+
+    dimension : la clé de dimension concernée (ex: 'equipe').
+    categorie : une des FindingCategory (porte à la fois le sens et la polarité).
+    message : le constat, lisible et auto-porteur.
+    source : d'où il vient (ex: 'critere:equipe_insight', 'detecteur:red_flags'),
+             pour rester auditable comme les 'rationale' du scoring d'avant.
     """
 
     dimension: str
-    label: str
-    score: float
-    weight: float  # poids de la dimension dans le round (0 si non pondérée)
-    rationale: list[str]
+    categorie: FindingCategory
+    message: str
+    source: str | None = None
+
+
+# Métadonnées d'affichage par catégorie : polarité (pour trier pros/cons), libellé
+# lisible, ordre d'apparition dans le mémo. Une seule source de vérité, les renderers
+# la lisent au lieu de recoder la logique de tri à chaque endroit.
+FINDING_CATEGORIES: dict[str, dict[str, object]] = {
+    "redhibitoire":        {"polarite": "negatif", "label": "Rédhibitoire", "ordre": 0},
+    "faiblesse":           {"polarite": "negatif", "label": "Faiblesse / attendu manquant", "ordre": 1},
+    "vigilance":           {"polarite": "negatif", "label": "Point de vigilance", "ordre": 2},
+    "avantage_competitif": {"polarite": "positif", "label": "Avantage compétitif", "ordre": 3},
+    "atout_equipe":        {"polarite": "positif", "label": "Atout d'équipe / expertise", "ordre": 4},
+    "a_creuser":           {"polarite": "neutre",  "label": "À creuser / donnée manquante", "ordre": 5},
+}
 
 
 class AnalysisResult(BaseModel):
-    """Résultat complet du jugement déterministe sur un deck, pour un round donné."""
+    """Résultat du volet déterministe : le round et les red flags détectés.
+
+    Depuis le pivot, plus de score : la couche qualitative (Finding) reprend ces
+    red flags et les range en constats tagués.
+    """
 
     round: str
-    global_score: float  # score global pondéré, sur 100
-    dimension_scores: list[DimensionScore]
     red_flags: list[RedFlag]
 
 
