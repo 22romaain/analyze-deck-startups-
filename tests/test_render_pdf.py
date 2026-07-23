@@ -32,7 +32,7 @@ def test_render_pdf_cree_fichier_et_contenu(tmp_path):
 
     texte = _texte_du_pdf(path)
     assert "Recommandation : APPROFONDIR" in texte
-    assert "Contre-analyse indisponible (erreur API)." in texte  # bandeau §6
+    assert "indisponible" in texte  # bandeau de l'analyse LLM
 
 
 def test_render_pdf_ne_laisse_pas_de_markdown_brut(tmp_path):

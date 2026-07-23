@@ -151,9 +151,9 @@ def render_incoherences(memo: MemoData) -> None:
 
 
 def render_review(memo: MemoData) -> None:
-    """Section 6 : la contre-analyse LLM, précédée de son bandeau d'avertissement."""
+    """Section 6 : la lecture LLM au regard de la thèse, précédée de son bandeau."""
     review = memo.contre_analyse
-    st.subheader("Contre-analyse")
+    st.subheader("Analyse au regard de ta thèse")
     st.info(review.bandeau)
     if review.disponible and review.contenu:
         st.write(review.contenu)

@@ -101,7 +101,7 @@ if "analysis" in st.session_state:
     memo_key = f"memo_{confirmed_round}"
     if memo_key not in st.session_state:
         retriever, doctrine_msg = _load_doctrine_retriever()
-        review_generator = make_review_generator()
+        review_generator = make_review_generator(retriever)
         with st.spinner("Construction du mémo (doctrine et contre-analyse)..."):
             review = review_generator(analysis, result) if review_generator else None
             st.session_state[memo_key] = build_memo_data(

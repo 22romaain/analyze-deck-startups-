@@ -54,9 +54,9 @@ Constats :
 
 - **Point de vigilance** — Incohérence interne : revenu de ~2.0M EUR anormalement élevé pour un serie-a.
 
-## Contre-analyse
+## Analyse au regard de ta thèse
 
-> Contre-analyse indisponible (erreur API).
+> Analyse LLM indisponible (pas de clé API ou erreur).
 
 ## Cap table et dilution
 

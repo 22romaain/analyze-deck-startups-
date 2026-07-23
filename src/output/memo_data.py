@@ -332,8 +332,11 @@ def build_dimensions_qualitatives(
 # --- Contre-analyse (section 6) ---
 
 # Bandeaux fixes : le mode dégradé et le mode disponible portent un message exact.
-REVIEW_BANDEAU_INDISPONIBLE = "Contre-analyse indisponible (erreur API)."
-REVIEW_BANDEAU_DISPONIBLE = "Critique générée par LLM. Hors analyse déterministe. Non reproductible."
+REVIEW_BANDEAU_INDISPONIBLE = "Analyse LLM indisponible (pas de clé API ou erreur)."
+REVIEW_BANDEAU_DISPONIBLE = (
+    "Lecture LLM au regard de ta thèse et de ta doctrine. Consultative : hors du verdict "
+    "déterministe, non reproductible."
+)
 
 
 def build_review_block(review_content: str | None = None) -> ReviewBlock:

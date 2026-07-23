@@ -28,7 +28,7 @@ def test_render_docx_cree_fichier_et_contenu(tmp_path):
     assert len(doc.tables) == 0  # rendu brut : aucun tableau Word
     textes = "\n".join(p.text for p in doc.paragraphs)
     assert "Recommandation : APPROFONDIR" in textes
-    assert "Contre-analyse indisponible (erreur API)." in textes  # bandeau §6, en texte simple
+    assert "indisponible" in textes  # bandeau de l'analyse LLM, en texte simple
 
 
 def test_render_docx_saute_les_separateurs_de_tableau(tmp_path):

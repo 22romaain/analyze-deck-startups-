@@ -11,6 +11,7 @@ from src.captable import DilutionResult
 from src.models import Finding
 from src.output.memo_data import (
     DISCLAIMER,
+    REVIEW_BANDEAU_INDISPONIBLE,
     Annexes,
     CapTableSection,
     DeckFigureRow,
@@ -80,7 +81,7 @@ def make_memo() -> MemoData:
         incoherences=[incoherence],
         contre_analyse=ReviewBlock(
             disponible=False,
-            bandeau="Contre-analyse indisponible (erreur API).",
+            bandeau=REVIEW_BANDEAU_INDISPONIBLE,
             contenu=None,
         ),
         cap_table=CapTableSection(
@@ -107,9 +108,9 @@ def test_render_markdown_golden():
 
 
 def test_render_degradation_contre_analyse():
-    # Sans contre-analyse : l'encart dégradé apparaît, aucune trace du bandeau "disponible".
+    # Sans analyse LLM : l'encart dégradé apparaît (bandeau "indisponible").
     md = render_markdown(make_memo())
-    assert "Contre-analyse indisponible (erreur API)." in md
+    assert "indisponible" in md
 
 
 def test_render_markdown_affiche_doctrine():

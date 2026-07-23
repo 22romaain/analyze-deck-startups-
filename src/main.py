@@ -95,8 +95,8 @@ def main() -> None:
 
     retriever, doctrine_msg = _load_doctrine_retriever()
     print(doctrine_msg)
-    review_generator = make_review_generator()
-    print("Contre-analyse LLM activee." if review_generator else "Contre-analyse LLM desactivee (pas de cle).")
+    review_generator = make_review_generator(retriever)
+    print("Analyse LLM (these + doctrine) activee." if review_generator else "Analyse LLM desactivee (pas de cle).")
 
     try:
         memo, md_path, docx_path = build_and_write_memo(

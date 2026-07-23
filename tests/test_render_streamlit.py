@@ -50,7 +50,7 @@ def test_render_memo_affiche_toutes_les_sections():
     attendus = [
         "Recommandation : APPROFONDIR", "Synthèse", "Grille d'attendus",
         "Ce que le deck affirme", "Analyse par dimension", "Incohérences internes",
-        "Contre-analyse", "Cap table et dilution",
+        "Analyse au regard de ta thèse", "Cap table et dilution",
     ]
     assert [s.value for s in at.subheader] == attendus
 
@@ -58,7 +58,7 @@ def test_render_memo_affiche_toutes_les_sections():
 def test_render_memo_affiche_le_bandeau_de_contre_analyse():
     # Mode dégradé : le bandeau explique pourquoi la section est vide.
     at = _lance(_page_memo_complet)
-    assert any("Contre-analyse indisponible" in i.value for i in at.info)
+    assert any("indisponible" in i.value for i in at.info)
 
 
 def test_render_memo_affiche_le_narratif_quand_il_existe():

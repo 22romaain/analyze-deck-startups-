@@ -128,9 +128,9 @@ def _render_incoherences(memo: MemoData) -> list[str]:
 
 
 def _render_review(memo: MemoData) -> list[str]:
-    """Section 6 : contre-analyse. Encart distinct (blockquote), mode dégradé géré."""
+    """Section 6 : lecture LLM au regard de la thèse. Encart distinct, mode dégradé géré."""
     r = memo.contre_analyse
-    lines = ["## Contre-analyse", "", f"> {r.bandeau}"]
+    lines = ["## Analyse au regard de ta thèse", "", f"> {r.bandeau}"]
     if r.disponible and r.contenu:
         lines += ["", r.contenu]
     return lines

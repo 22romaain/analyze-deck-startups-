@@ -30,8 +30,15 @@ L'outil ne prononce pas de « non » définitif.
 | `Synthese`, `build_synthese`, `recommander` | `src/output/synthese.py` | Pros/cons + recommandation |
 | `build_grille`, `build_dimensions_qualitatives`, `build_memo_data`, `MemoData` | `src/output/memo_data.py` | Grille, dimensions sans score, agrégat |
 | `render_markdown/docx/pdf/streamlit` | `src/output/` | 4 rendus (docx et pdf dérivent du markdown) |
-| `charger_these`, `generate_review` | `src/review.py` | Thèse d'investissement injectée dans la contre-analyse LLM |
+| `charger_these`, `rassembler_contexte_cours`, `generate_review` | `src/review.py` | **Couche de jugement LLM** : thèse + cours (RAG) → lecture au regard de la thèse + contre-analyse |
 | `these_investissement.md` | `config/` | **Thèse éditable** en prose libre (vide par défaut) |
+
+**Couche de jugement LLM (consultative, option A).** Un appel LLM reçoit les faits
+déterministes + la thèse + les extraits de cours pertinents (RAG, sous budget de tokens)
+et rend deux volets rédigés (lecture au regard de la thèse, contre-analyse). Consultatif :
+n'entre PAS dans le verdict déterministe (qui reste l'ancre auditable). S'active avec
+`MISTRAL_API_KEY` + index RAG ; sinon mode dégradé. **Aussi bon que la thèse** : tant que
+`these_investissement.md` est vide, le LLM raisonne sur les cours seuls.
 
 `run_analysis` ne calcule plus de score : il livre round + red flags. `ROUND_WEIGHTS`
 existe encore mais ne sert plus qu'à **ordonner** l'affichage des dimensions.
