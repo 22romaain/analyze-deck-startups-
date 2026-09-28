@@ -1,0 +1,10 @@
+[project]
+name = "analyze-deck-startups"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "mistralai>=2.10.1",
+    "pydantic>=2.13.5",
+    "pymupdf>=1.28.2",
+    "python-dotenv>=1.2.3",
+]
