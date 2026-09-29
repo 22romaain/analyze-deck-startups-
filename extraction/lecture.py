@@ -42,7 +42,7 @@ def transcrire_image(client, image):
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
         ],
     }]
-    reponse = client.chat.complete(model="ministral-8b-latest", messages=messages)
+    reponse = client.chat.complete(model="mistral-medium-latest", messages=messages)
     return reponse.choices[0].message.content
 
 
