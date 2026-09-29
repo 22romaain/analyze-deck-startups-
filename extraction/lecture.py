@@ -2,16 +2,18 @@ import base64
 
 import pymupdf
 
-CONSIGNE ="""Tu reçois l'image d'une slide de pitch deck. Transcris tout ce qu'elle contient, fidèlement.
+CONSIGNE = """Tu reçois l'image d'une slide de pitch deck. Son texte a déjà été extrait par OCR : ne le recopie pas.
+Décris uniquement ce que l'OCR ne capte pas :
 
-- Texte : recopie tout le texte visible, mot pour mot, y compris les titres, les notes et les petites mentions.
-- Chiffres : recopie chaque chiffre exactement comme écrit, avec son unité, sa devise et sa période (ex : "1,2M €", "15% MoM", "2024").
-- Graphiques : indique le type de graphique, ce que représentent les axes, leur unité et leur échelle (ex : "en milliers"), puis chaque valeur lisible.
-- Tableaux : recopie-les ligne par ligne.
-- Logos et photos : cite les noms de sociétés et de personnes visibles.
+- Graphiques : indique le type de graphique, ce que représentent les axes, leur unité et leur échelle (ex : "en milliers"), puis chaque valeur lisible avec son libellé.
+- Tableaux et schémas : indique les correspondances que l'OCR perd (quelle valeur va avec quelle ligne ou colonne, flèches, étapes).
+- Logos et photos : cite les noms de sociétés et de personnes visibles, et leur rôle sur la slide (clients, partenaires, investisseurs, équipe).
+- Mises en avant visuelles : signale les éléments cochés, barrés, surlignés ou encadrés (ex : tableau concurrentiel).
 
+Recopie chaque chiffre exactement comme affiché, avec son unité, sa devise et sa période (ex : "1,2M €", "15% MoM", "2024").
 N'interprète rien, ne résume rien, n'invente rien. Si un élément est illisible, écris [illisible].
-Réponds uniquement avec la transcription, sans phrase d'introduction."""
+Si la slide ne contient que du texte, réponds uniquement [aucun élément visuel].
+Réponds uniquement avec la description, sans phrase d'introduction."""
 
 
 def images_pdf(chemin):
