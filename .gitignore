@@ -1,36 +1,22 @@
-# Secrets (clé API)
+
 .env
 
-# Environnement virtuel Python
-venv/
-
-# Cache Python
 __pycache__/
 *.pyc
 
-# Fichiers système macOS
 .DS_Store
 
-# Decks de test (PDF volumineux, données pas du code)
 decks/
 
-# Mémos générés (sortie de l'outil, pas du code)
-# Ancré à la racine (/) pour ne pas ignorer le package source src/output/.
 /output/
 
-# Cache pytest
 .pytest_cache/
 
-# Corpus RAG : supports de cours personnels (prives, potentiellement volumineux).
-# On versionne le dossier et son README, jamais son contenu.
 /courses/*
 !/courses/README.md
 
-# Base vectorielle ChromaDB (regenerable a partir de courses/).
 /chroma_db/
 
-# Doctrine VC privee (doublon de la copie RAG dans courses/, elle-meme ignoree)
 criteria/
 
-# Instructions projet (privees)
 CLAUDE.md
