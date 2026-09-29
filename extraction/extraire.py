@@ -15,5 +15,5 @@ def extraire(chemin):
 
 
 if __name__ == "__main__":
-    for slide in extraire("decks/test_image_random.pdf"):
-        print(slide)
+    fiche = extraire("decks/test_image_random.pdf")
+    print(fiche.model_dump_json(indent=2))
