@@ -76,7 +76,6 @@ class Identite(BaseModel):
 class Besoin(BaseModel):
     probleme: str | None = champ("problème résolu décrit simplement")
     client_cible: str | None = champ("client cible précis (segment, taille en salariés ou en CA, fonction de l'acheteur)")
-    utilisateur_final: str | None = champ("utilisateur final (si différent de l'acheteur)")
     pain_points: list[str] | None = champ("pain points listés par la société")
     must_have: str | None = champ("caractère must-have ou nice-to-have du besoin tel que présenté")
     urgence: str | None = champ("urgence du besoin")
@@ -84,7 +83,6 @@ class Besoin(BaseModel):
     solution_actuelle: str | None = champ("solution actuelle du client (produit concurrent, outil interne, process manuel, statu quo)")
     cout_probleme: str | None = champ("coût actuel du problème pour le client (temps, argent, risque)")
     gain_client: Chiffre | None = champ("gain annoncé pour le client (€ par an)")
-    prix_client: Chiffre | None = champ("prix payé par le client (€ par an)")
     cout_unitaire_vs_alternative: str | None = champ("coût unitaire de la solution vs alternative existante (ex : €/tonne)")
     capex_energie_vs_existant: str | None = champ("capex et consommation d'énergie vs existant")
     proposition_valeur: str | None = champ("tableau client / cas d'usage / proposition de valeur")
@@ -104,7 +102,6 @@ class Produit(BaseModel):
     roadmap: list[str] | None = champ("roadmap produit à 6-18 mois")
     pivot: str | None = champ("pivot ou produit ajouté à la demande des clients")
     nouveaux_segments: list[str] | None = champ("nouveaux verticaux ou segments visés")
-    differenciation: str | None = champ("différenciation produit revendiquée")
     connecteurs: str | None = champ("nombre de connecteurs et intégrations (API, logiciels métier, systèmes du client)")
     dependance_api_tiers: str | None = champ("dépendance à l'API de fabricants ou d'éditeurs tiers")
     marques_compatibles: str | None = champ("nombre de marques compatibles et part du marché couverte")
@@ -122,7 +119,6 @@ class Data(BaseModel):
     modeles_maison: str | None = champ("modèles maison entraînés sur une donnée spécifique")
     fournisseur_modele: str | None = champ("model-agnostic ou dépendant d'un fournisseur de modèle")
     multi_cloud: bool | None = champ("multi-cloud")
-    briques_non_proprietaires: list[str] | None = champ("briques techniques non propriétaires (ex : connecteurs licenciés type Plaid)")
     donnee_proprietaire: str | None = champ("donnée propriétaire générée par l'usage, achetée ou sous licence")
     historique_comportemental: str | None = champ("historique comportemental accumulé par utilisateur")
     workflows_encodes: str | None = champ("workflows encodés par client dans le produit")
@@ -205,7 +201,6 @@ class Traction(BaseModel):
     ca_mensuel: list[Chiffre] | None = champ("chiffre d'affaires par mois (12 à 24 derniers mois)")
     croissance_mom: Chiffre | None = champ("croissance MoM")
     croissance_yoy: Chiffre | None = champ("croissance YoY")
-    periode_croissance: str | None = champ("période du taux de croissance affiché")
     nombre_clients: list[Chiffre] | None = champ("nombre de clients à date et évolution mensuelle")
     logos: list[str] | None = champ("logos clients affichés")
     payants_vs_tests: str | None = champ("clients payants vs clients en test")
@@ -232,14 +227,11 @@ class ARR(BaseModel):
     poc_payants: str | None = champ("POC payants inclus dans l'ARR (nombre, montant, prix unitaire)")
     pilotes_non_signes: str | None = champ("pilotes non signés inclus dans l'ARR")
     frais_services: str | None = champ("frais d'implémentation, de setup, de paramétrage, professional services et formation (montant, % du CA)")
-    services_sur_mesure: Chiffre | None = champ("services d'intégration ou déploiement sur mesure en % du CA")
     bookings_vs_arr: str | None = champ("bookings vs ARR")
     contrats_pluriannuels: str | None = champ("contrats pluriannuels ramenés au montant annuel")
     arpa: Chiffre | None = champ("MRR ou ARR moyen par client (ARPA, ACV)")
     decomposition_mrr: str | None = champ("décomposition du MRR par segment (ex : résidentiel, entreprise, revendeur), par nature et par client")
-    revenu_par_ligne: list[str] | None = champ("revenu par ligne de revenu")
     volumes_plateforme: Chiffre | None = champ("montants placés ou volumes transitant par la plateforme")
-    part_engagee: Chiffre | None = champ("part du revenu engagée par contrat (minimums annuels)")
     ai_native_facturation: str | None = champ("AI-native service : facturation au dossier, au résultat ou à l'usage")
     ai_native_volume: Chiffre | None = champ("AI-native service : volume traité par semaine")
 
@@ -258,7 +250,6 @@ class Clients(BaseModel):
 class Retention(BaseModel):
     courbes: str | None = champ("courbes de rétention")
     churn: str | None = champ("logo churn, revenue churn et downgrade séparés (%)")
-    retention_logo_brute: Chiffre | None = champ("rétention logo brute")
     periode_churn: str | None = champ("période de mesure du churn")
     anciennete_cohortes: str | None = champ("ancienneté des cohortes utilisées")
     nrr: Chiffre | None = champ("Net Revenue Retention (NRR)")
@@ -276,7 +267,6 @@ class Marketplace(BaseModel):
     acheteurs_actifs: int | None = champ("nombre d'acheteurs actifs")
     vendeurs_actifs: int | None = champ("nombre de vendeurs ou offreurs actifs")
     panier_moyen: Chiffre | None = champ("panier moyen")
-    ticket_moyen: Chiffre | None = champ("ticket moyen")
     frequence_achat: str | None = champ("fréquence d'achat par cohorte")
     taux_reachat: Chiffre | None = champ("taux de réachat")
     part_gmv_recurrents: Chiffre | None = champ("part du GMV venant d'acheteurs récurrents")
@@ -293,10 +283,8 @@ class AARRR(BaseModel):
     mau: int | None = champ("MAU")
     stickiness: Chiffre | None = champ("stickiness DAU/MAU")
     croissance_dau_mau: str | None = champ("croissance historique du DAU et du MAU")
-    canaux_acquisition: str | None = champ("canaux par lesquels l'utilisateur trouve l'application et coût par canal (acquisition)")
     churn_onboarding: str | None = champ("churn à chaque étape de l'onboarding jusqu'à la fonctionnalité cœur (activation)")
     retention_d1_d7_d30: str | None = champ("rétention D1, D7 et D30")
-    retention_court_terme: str | None = champ("rétention à 1 semaine et à 1 mois (court terme)")
     retention_long_terme: Chiffre | None = champ("part des utilisateurs actifs à 1 mois encore actifs à 3 mois (long terme)")
     sessions_par_dau: float | None = champ("sessions quotidiennes par DAU")
     k_factor: float | None = champ("K-factor (nombre moyen de nouveaux utilisateurs apportés par utilisateur)")
@@ -331,9 +319,7 @@ class GTM(BaseModel):
 class Monetisation(BaseModel):
     sources_revenus: list[str] | None = champ("sources de revenus (abonnement, usage, commission, fee revendeur, services réseau, revenue share, white label avec prix setup + annuel)")
     modele_hardware: str | None = champ("hardware : vente d'équipement, licence, location ou paiement à l'unité produite")
-    modalites_paiement: str | None = champ("modalités de paiement")
     pricing: str | None = champ("pricing (grille, prix par offre, prix par unité)")
-    prix_accepte: str | None = champ("prix que le client est prêt à payer")
     ltv: Chiffre | None = champ("LTV")
     ltv_cac: float | None = champ("LTV / CAC")
     payback: Chiffre | None = champ("CAC payback period")
@@ -348,7 +334,6 @@ class Couts(BaseModel):
     marge_unitaire: str | None = champ("marge brute par unité, par tonne ou par contrat")
     cogs: str | None = champ("composantes du COGS (coûts d'inférence, validation humaine, équipe offshore)")
     part_intervention_humaine: str | None = champ("part des unités traitées avec intervention humaine et sa tendance")
-    taux_automatique: Chiffre | None = champ("taux de traitement automatique")
     cout_traitement_unitaire: Chiffre | None = champ("coût de traitement par unité")
     experts_qualite: int | None = champ("nombre d'experts humains en contrôle qualité")
     opex_par_poste: list[str] | None = champ("charges opérationnelles par poste")
@@ -357,10 +342,8 @@ class Couts(BaseModel):
 
 class Cash(BaseModel):
     pnl_historique: str | None = champ("P&L historique")
-    chiffre_affaires: Chiffre | None = champ("chiffre d'affaires")
     ebitda: Chiffre | None = champ("EBITDA")
     marge_ebitda: Chiffre | None = champ("marge d'EBITDA (positive ou non)")
-    lignes_pnl: str | None = champ("lignes du P&L au-dessus de l'EBITDA")
     cash_flows: str | None = champ("cash-flows")
     capex_production: Chiffre | None = champ("capex de production")
     capex_unitaire: Chiffre | None = champ("capex par unité")
@@ -381,7 +364,6 @@ class Cash(BaseModel):
 class Previsionnel(BaseModel):
     business_plan: str | None = champ("P&L prévisionnel (business plan) et hypothèses")
     plan_croissance: str | None = champ("plan de croissance présenté")
-    strategie_scale: str | None = champ("stratégie pour scaler")
     objectifs: list[str] | None = champ("objectifs chiffrés à 12, 18 et 24 mois")
     premier_revenu: Chiffre | None = champ("premier revenu (année et montant)")
     revenu_projete: list[Chiffre] | None = champ("revenu projeté à 7-10 ans")
@@ -394,7 +376,6 @@ class Previsionnel(BaseModel):
 
 class Equipe(BaseModel):
     fondateurs: list[Fondateur] | None = champ("fondateurs (noms, rôles, parcours)")
-    nombre_cofondateurs: int | None = champ("nombre de cofondateurs")
     repartition_capital: str | None = champ("répartition du capital entre fondateurs")
     fondateur_praticien: str | None = champ("fondateur ayant vécu le problème en tant que praticien")
     parcours_secteur: str | None = champ("parcours chez des acteurs du secteur (grands groupes, concurrents, clients)")
@@ -428,8 +409,6 @@ class Deal(BaseModel):
     runway_apres_tour: Chiffre | None = champ("runway après le tour")
     historique: list[Tour] | None = champ("historique de financement (tours, montants, dates, valorisations, investisseurs)")
     total_leve: Chiffre | None = champ("total levé à date")
-    investisseurs_publics_strategiques: list[str] | None = champ("investisseurs publics (Bpifrance, fonds d'État) et stratégiques corporate au capital")
-    industriel_capital: str | None = champ("industriel au capital")
     accord_test: str | None = champ("accord de test")
     consortium: str | None = champ("consortium signé")
     partenaires_pilotes: list[str] | None = champ("partenaires industriels donnant accès à des sites pilotes")
@@ -442,7 +421,6 @@ class CapTable(BaseModel):
     option_pool: str | None = champ("option pool (taille, refresh demandé, % cible, inclus dans le pre-money ou le post-money)")
     bspce_bsa: str | None = champ("BSPCE, BSA et BSA AIR émis")
     safe: str | None = champ("SAFE (montant, valuation cap, discount, pre-money ou post-money, MFN)")
-    board: list[str] | None = champ("composition du board")
 
 
 class Moat(BaseModel):
@@ -461,7 +439,6 @@ class ESG(BaseModel):
 
 
 class References(BaseModel):
-    investisseurs_reference: list[str] | None = champ("investisseurs de référence au capital (ex : fonds seed tier 1)")
     programmes: list[str] | None = champ("programmes d'accélération ou d'incubation suivis")
     presse_prix: list[str] | None = champ("presse et prix")
 
