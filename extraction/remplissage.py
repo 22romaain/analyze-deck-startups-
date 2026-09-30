@@ -44,5 +44,5 @@ def remplir_fiche(client, slides):
         {"role": "system", "content": CONSIGNE},
         {"role": "user", "content": texte},
     ]
-    reponse = client.chat.parse(model="mistral-8b-latest", messages=messages, response_format=Fiche)
+    reponse = client.chat.parse(model="mistral-medium-latest", messages=messages, response_format=Fiche)
     return reponse.choices[0].message.parsed
