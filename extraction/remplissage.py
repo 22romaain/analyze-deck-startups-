@@ -1,8 +1,6 @@
 from extraction.fiche import Fiche
 
-CONSIGNE = """Tu es analyste VC. Tu reçois un pitch deck, slide par slide. Pour chaque slide :
-- "OCR" : le texte exact de la slide. Il fait foi pour le texte et les chiffres écrits.
-- "Vision" : ce que l'OCR ne capte pas (graphiques, tableaux, logos, éléments cochés ou surlignés).
+CONSIGNE = """Tu es analyste VC. Tu reçois un pitch deck, slide par slide. Pour chaque slide, plusieurs extractions indépendantes du même contenu (OCR, Texte PDF, Vision). Aucune ne prime : elles se recoupent, fusionne-les sans doublon.
 
 Ta mission : remplir la fiche de la façon la plus complète et la plus fidèle possible.
 
@@ -30,14 +28,14 @@ Textes
 - Ce que la société affirme reste une affirmation : écris "revendique", "selon la société".
 
 Contradictions
-- Ajoute une entrée dès que deux informations du deck se contredisent (entre deux slides, ou entre l'OCR et la vision), sous la forme :
+- Ajoute une entrée dès que deux informations du deck se contredisent (entre deux slides, ou entre deux extractions), sous la forme :
   "sujet : valeur A (slide X) vs valeur B (slide Y)"."""
 
 
 def remplir_fiche(client, slides):
     blocs = []
     for slide in slides:
-        bloc = f"## Slide {slide['numero']}\n### OCR\n{slide['texte_ocr']}\n### Vision\n{slide['texte_vision']}"
+        bloc = f"## Slide {slide['numero']}\n### OCR\n{slide['texte_ocr']}\n### Texte PDF\n{slide['texte_pdf']}\n### Vision\n{slide['texte_vision']}"
         blocs.append(bloc)
     texte = "\n\n".join(blocs)
     messages = [
