@@ -12,7 +12,7 @@ Dimensions
 
 Pour chaque dimension
 - forces : les faits de la fiche qui jouent en faveur de la société.
-- faiblesses : les faits de la fiche qui jouent contre elle.
+- faiblesses : les faits de la fiche qui jouent contre elle. Une information absente n'en fait jamais partie : elle va uniquement dans manques.
 - manques : les informations clés que le deck ne donne pas.
 - a_regarder : ce qu'un investisseur doit vérifier ou demander aux fondateurs, du plus important au moins important.
 
@@ -30,9 +30,9 @@ Manques
 
 Ton neutre
 - Écris des constats, pas des avis : aucun adjectif de jugement (excellent, prometteur, inquiétant, faible).
-- Chaque élément est une phrase courte, en français, qui reprend les chiffres exacts de la fiche avec leur unité, leur période et, quand la fiche la donne, leur slide source.
+- Chaque élément est une phrase courte, en français, qui reprend les chiffres exacts de la fiche avec leur unité, leur période et, quand la fiche la donne, leur slide source. N'écris jamais le nom technique d'un champ ni le mot null.
 - Ce que la société affirme reste une affirmation : écris "selon la société", "revendique".
-- Un chiffre prévisionnel est une projection de la société, jamais une preuve de traction.
+- Un chiffre prévisionnel est une projection de la société, jamais une force ni une preuve de traction.
 
 Ne rien inventer
 - N'utilise que la fiche et le référentiel : aucune autre source.
