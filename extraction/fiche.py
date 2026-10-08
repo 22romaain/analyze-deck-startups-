@@ -42,6 +42,7 @@ class Chiffre(BaseModel):
     valeur: float
     unite: str | None = champ("unité ou devise (ex : €, %, clients)")
     periode: str | None = champ("période ou date (ex : 2024, mars 2025, par mois)")
+    slide: int | None = champ("numéro de la slide d'où vient le chiffre")
 
 
 class Fondateur(BaseModel):
