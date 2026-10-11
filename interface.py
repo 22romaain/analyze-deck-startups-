@@ -15,8 +15,9 @@ if fichier and st.button("Analyser"):
     deck.write_bytes(fichier.getvalue())
     with st.spinner("Analyse en cours…"):
         fiche = extraire(client, deck)
-        texte = restituer(fiche, analyser(client, fiche))
+        texte = restituer(analyser(client, fiche))
     Path("output").mkdir(exist_ok=True)
+    Path(f"output/{deck.stem}.json").write_text(fiche.model_dump_json(indent=2, exclude_none=True), encoding="utf-8")
     en_pdf(texte, f"output/{deck.stem}.pdf")
     st.download_button("Télécharger le PDF", Path(f"output/{deck.stem}.pdf").read_bytes(), f"{deck.stem}.pdf", on_click="ignore")
     st.markdown(texte)
